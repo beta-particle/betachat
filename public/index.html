@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>betachat</title>
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#e4ebe8" media="(prefers-color-scheme: light)">
@@ -662,6 +662,43 @@
     .profile-preview { display: flex; justify-content: center; margin: 1.25rem 0 0.5rem; }
     .profile-pic .row { justify-content: center; margin-top: 0.25rem; }
     .profile-pic .form-error { text-align: center; }
+
+    /* Mobile-app finish: keep controls thumb-friendly, respect notches, and make the same shell
+       feel spacious on iPhone while taking advantage of iPad's wider canvas. */
+    button, input, textarea { touch-action: manipulation; }
+    input, textarea { font-size: 16px; }
+    .app { padding-top: env(safe-area-inset-top, 0px); }
+    .chat-head { padding-top: max(0.75rem, env(safe-area-inset-top, 0px)); }
+    .tabbar { min-height: 4.25rem; }
+    .tabbar button { min-height: 3.75rem; }
+    .btn, .link, .chat-back, .tab-back, .rail-tab, .room { min-height: 2.75rem; }
+    .composer textarea { min-height: 2.9rem; }
+
+    @media (max-width: 799px) {
+      .join { align-items: flex-start; padding: max(2rem, env(safe-area-inset-top, 0px)) 1rem 2rem; }
+      .join-panel, .join form { max-width: 34rem; }
+      .join-card { padding: 1.25rem; border-radius: var(--r-xl); }
+      .tab-screen { padding: 1.25rem 1rem 1.5rem; }
+      .tab-screen-inner { max-width: 38rem; }
+      .chat-head { padding-inline: 0.75rem; }
+      .chat-head h1 { font-size: 1.15rem; }
+      .messages { padding: 1rem 0.75rem; }
+      .msg-body { max-width: min(calc(100% - 2.25rem), 34rem); }
+      .bubble { padding: 0.62rem 0.82rem; }
+      .notice, .typing { padding-inline: 0.75rem; }
+      .composer { gap: 0.45rem; padding: 0.55rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom, 0px)); }
+      .composer .btn { min-width: 4.25rem; padding-inline: 0.9rem; }
+    }
+
+    @media (min-width: 800px) and (max-width: 1180px) {
+      .rail { width: 15.5rem; }
+      .messages, .composer, .notice, .typing { max-width: 52rem; }
+    }
+
+    @media (min-width: 1181px) {
+      .app { max-width: 1440px; margin-inline: auto; box-shadow: var(--shadow-lg); }
+      body { justify-content: center; }
+    }
   </style>
 </head>
 <body>
