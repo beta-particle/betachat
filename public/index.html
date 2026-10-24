@@ -1069,6 +1069,20 @@
     .list-search:focus-within { box-shadow: 0 0 0 2px var(--mine); }
     .search-empty { margin: 2rem 0.5rem; text-align: center; color: var(--muted); font-size: 0.95rem; overflow-wrap: anywhere; }
     .search-empty[hidden] { display: none; }
+    /* ---- Unread counts, tab badges, drafts ---- */
+    .tab-btn { position: relative; }
+    .tab-badge {
+      position: absolute; top: 0.3rem; left: calc(50% + 0.3rem); min-width: 1.15rem; height: 1.15rem; padding: 0 0.3rem; box-sizing: border-box;
+      border-radius: 0.6rem; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; line-height: 1.15rem; text-align: center;
+    }
+    .tab-badge[hidden] { display: none; }
+    .room-count {
+      flex: none; min-width: 1.35rem; height: 1.35rem; padding: 0 0.4rem; box-sizing: border-box; border-radius: 0.7rem;
+      background: var(--mine); color: var(--mine-ink, #fff); font-size: 0.75rem; font-weight: 700; line-height: 1.35rem; text-align: center;
+    }
+    .room.has-unread .room-name { font-weight: 700; }
+    .room.has-unread .dm-preview { color: var(--ink); }
+    .dm-preview.draft::before { content: "Draft: "; color: var(--danger); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -1308,10 +1322,12 @@
       <button type="button" class="tab-btn" data-tab="rooms" aria-current="true">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>
         Rooms
+        <span class="tab-badge" data-badge="rooms" hidden></span>
       </button>
       <button type="button" class="tab-btn" data-tab="messages" aria-current="false">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>
         Messages
+        <span class="tab-badge" data-badge="messages" hidden></span>
       </button>
       <button type="button" class="tab-btn" data-tab="account" aria-current="false">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -1645,6 +1661,21 @@
       // name is empty and new, and if that name was a typo it leaves nothing behind.
       const MAX_ROOMS = 30;
       let roomList = [];  // [{ name, private, ts }]
+      let roomStatus = {}; // name -> { unread, last: { mine, name, text, ts } }, from the server, for rooms you have been in
+
+      // ---- Drafts: a half-typed message waits for you in each conversation ----
+      const draftKey = (convo) => `betachat:draft:${myKey}:${convo}`;
+      function getDraft(convo) {
+        try { return localStorage.getItem(draftKey(convo)) || ""; } catch { return ""; }
+      }
+      function setDraft(convo, text) {
+        if (!convo) return;
+        try {
+          if (text.trim()) localStorage.setItem(draftKey(convo), text);
+          else localStorage.removeItem(draftKey(convo));
+        } catch {}
+      }
+      let draftConvo = "", draftTimer;
       let renderedRooms = null;
       let justCreated = false; // this join made the room (and the person asked for it), so say so in the empty state
       const roomsStorageKey = () => `betachat:rooms:${myKey}`;
@@ -1727,8 +1758,34 @@
         name.className = "room-name";
         name.textContent = r.name; // textContent, like everything else that comes from a name
         button.insertAdjacentHTML("beforeend", HASH_TILE); // fixed markup, no user data
-        button.append(name);
+        const info = document.createElement("span");
+        info.className = "dm-info";
+        info.append(name);
+        const st = roomStatus[r.name];
+        const live = convoType === "room" && joined && room === r.name; // you are in it: nothing is unread
+        const draft = getDraft(`room:${r.name}`);
+        if (draft || (st && st.last)) {
+          const preview = document.createElement("span");
+          preview.className = "dm-preview" + (draft ? " draft" : "");
+          preview.textContent = draft ? draft : `${st.last.mine ? "You" : st.last.name}: ${st.last.text}`;
+          info.append(preview);
+        }
+        button.append(info);
+        if (st && st.last && st.last.ts) {
+          const time = document.createElement("span");
+          time.className = "dm-time";
+          time.textContent = fmtRelative(st.last.ts);
+          button.append(time);
+        }
         if (r.private) button.insertAdjacentHTML("beforeend", LOCK_ICON); // fixed markup, no user data
+        if (!live && st && st.unread > 0) {
+          button.classList.add("has-unread");
+          const count = document.createElement("span");
+          count.className = "room-count";
+          count.textContent = st.unread > 99 ? "99+" : String(st.unread);
+          count.setAttribute("aria-label", `${st.unread} unread`);
+          button.append(count);
+        }
         li.append(button);
         return li;
       }
@@ -1737,7 +1794,11 @@
       // rows when the list itself changed, so moving between rooms doesn't drop keyboard focus.
       function renderRooms() {
         const list = visibleRooms();
-        const signature = list.map((r) => `${r.name}${r.private ? "*" : ""}`).join(",") + `|${roomQuery}`;
+        const signature = list.map((r) => {
+          const st = roomStatus[r.name];
+          const live = convoType === "room" && joined && room === r.name;
+          return `${r.name}${r.private ? "*" : ""}:${live ? 0 : st ? st.unread : 0}:${st && st.last ? st.last.ts : 0}:${getDraft(`room:${r.name}`)}`;
+        }).join(",") + `|${roomQuery}`;
         const lists = [...document.querySelectorAll("[data-room-list]")];
 
         if (signature !== renderedRooms) {
@@ -1768,6 +1829,41 @@
         const noRooms = $("#rooms-search-empty");
         noRooms.hidden = !(roomQuery && list.length && !list.some(roomMatches));
         noRooms.textContent = `No rooms match \u201C${roomsSearch.value.trim()}\u201D`;
+        updateBadges();
+      }
+
+      async function loadRoomStatus() {
+        if (!myKey || !roomList.length) return;
+        try {
+          const { ok, data } = await api(`/api/rooms/status?rooms=${encodeURIComponent(roomList.map((r) => r.name).join(","))}`);
+          if (!ok || !data || typeof data.rooms !== "object") return;
+          roomStatus = data.rooms || {};
+          renderRooms();
+        } catch {}
+      }
+
+      // Counts on the tab icons and on the Home Screen icon (where the browser supports it)
+      function updateBadges() {
+        const watching = !document.hidden;
+        let rooms = 0;
+        for (const r of roomList) {
+          const st = roomStatus[r.name];
+          const live = watching && convoType === "room" && joined && room === r.name;
+          if (st && !live) rooms += st.unread;
+        }
+        const dms = dmList.filter((c) => c.unread && !(watching && convoType === "dm" && joined && c.peerKey === peerKey)).length;
+        for (const [key, n, label] of [["rooms", rooms, "Rooms"], ["messages", dms, "Messages"]]) {
+          const badge = document.querySelector(`[data-badge="${key}"]`);
+          if (!badge) continue;
+          badge.hidden = n === 0;
+          badge.textContent = n > 99 ? "99+" : String(n);
+          badge.parentElement.setAttribute("aria-label", n ? `${label}, ${n} unread` : label);
+        }
+        try {
+          const total = rooms + dms;
+          if (total && navigator.setAppBadge) navigator.setAppBadge(total).catch(() => {});
+          else if (!total && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+        } catch {}
       }
 
       // ---- Direct messages ------------------------------------------------
@@ -1818,10 +1914,11 @@
         name.className = "room-name";
         name.textContent = c.peer; // textContent, like everything else that comes from a name
         info.append(name);
-        if (c.lastText) {
+        const draft = getDraft(`dm:${c.peerKey}`);
+        if (draft || c.lastText) {
           const preview = document.createElement("span");
-          preview.className = "dm-preview";
-          preview.textContent = c.lastMine ? `You: ${c.lastText}` : c.lastText;
+          preview.className = "dm-preview" + (draft ? " draft" : "");
+          preview.textContent = draft ? draft : c.lastMine ? `You: ${c.lastText}` : c.lastText;
           info.append(preview);
         }
         button.append(info);
@@ -1841,7 +1938,7 @@
       // Draws the list in both places (sidebar, and above the join form on a phone), same as renderRooms.
       function renderDMs() {
         const list = visibleDMs();
-        const signature = list.map((c) => `${c.peerKey}:${c.lastTs}:${c.unread ? 1 : 0}:${c.lastText}`).join(",") + `|${dmQuery}`;
+        const signature = list.map((c) => `${c.peerKey}:${c.lastTs}:${c.unread ? 1 : 0}:${c.lastText}:${getDraft(`dm:${c.peerKey}`)}`).join(",") + `|${dmQuery}`;
         const lists = [...document.querySelectorAll("[data-dm-list]")];
 
         if (signature !== renderedDMs) {
@@ -1868,6 +1965,7 @@
         const noDMs = $("#dms-search-empty");
         noDMs.hidden = !(dmQuery && list.length && !list.some(dmMatches));
         noDMs.textContent = `No conversations match \u201C${dmsSearch.value.trim()}\u201D`;
+        updateBadges();
       }
 
       const roomsSearch = $("#rooms-search"), dmsSearch = $("#dms-search");
@@ -2018,7 +2116,13 @@
         if (joined && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "away", away }));
       }
 
-      document.addEventListener("visibilitychange", () => { sendAway(); markSeen(); });
+      document.addEventListener("visibilitychange", () => {
+        sendAway();
+        markSeen();
+        if (!document.hidden && myKey) { loadDMs(); loadRoomStatus(); }
+        updateBadges();
+      });
+      setInterval(() => { if (!document.hidden && myKey) { loadDMs(); loadRoomStatus(); } }, 45000); // keeps the counts honest while you sit on a list
       window.addEventListener("focus", markSeen);
       window.addEventListener("pagehide", () => sendAway(true));
 
@@ -2813,6 +2917,17 @@
         clearTyping();
       }
 
+      // The box shows whatever was half-typed in THIS conversation; what was in it for the last one is kept for next time
+      function restoreDraft() {
+        const here = convoKey();
+        if (here === draftConvo) return; // reconnecting to the same conversation: leave the box alone
+        if (draftConvo) setDraft(draftConvo, textEl.value);
+        draftConvo = here;
+        textEl.value = getDraft(here);
+        textEl.style.height = "auto";
+        if (textEl.value) textEl.style.height = Math.min(textEl.scrollHeight, 140) + "px";
+      }
+
       function showHistory(messages) {
         clearMessages();
         emptyEl.hidden = messages.length > 0;
@@ -2822,6 +2937,7 @@
         emptyNote.hidden = !justCreated;
         justCreated = false;
         messages.forEach((m) => renderMessage(m, true));
+        restoreDraft();
         // A half-made reply only survives reconnecting to the same conversation, and only if its message is still there
         if (replyTarget && (replyTarget.convo !== convoKey() || !entries.has(replyTarget.id))) clearReply();
       }
@@ -2927,7 +3043,7 @@
         tabButtons.forEach((btn) => btn.setAttribute("aria-current", String(!!tab && btn.dataset.tab === tab)));
         renderRooms();
         renderDMs();
-        if (tab && myKey) loadDMs(); // any of these screens is exactly when a stale preview would show
+        if (tab && myKey) { loadDMs(); loadRoomStatus(); } // any of these screens is exactly when a stale preview would show
         if (kind) runNav(kind, from, next, barWasHidden);
       }
 
@@ -3285,7 +3401,11 @@
         avatarVersions.clear();
         myAvatar = null;
         roomList = [];
+        roomStatus = {};
         dmList = [];
+        draftConvo = "";
+        textEl.value = "";
+        textEl.style.height = "auto";
         renderedDMs = null;
         me = myKey = password = pendingPassword = "";
         peerKey = peerName = "";
@@ -3389,6 +3509,7 @@
         myAvatar = avatar || null;
         loadRooms();
         loadDMs();
+        loadRoomStatus();
         avatarVersions.clear();
         if (myAvatar) avatarVersions.set(myKey, myAvatar);
         fillAvatar(meAvatar, myKey, me);
@@ -3602,6 +3723,8 @@
         resetMyTyping(); // the server ends "typing" itself when it gets the message
         textEl.value = "";
         textEl.style.height = "auto";
+        clearTimeout(draftTimer);
+        setDraft(draftConvo, "");
       });
 
       textEl.addEventListener("keydown", (event) => {
@@ -3613,6 +3736,8 @@
       textEl.addEventListener("input", () => {
         textEl.style.height = "auto";
         textEl.style.height = Math.min(textEl.scrollHeight, 140) + "px";
+        clearTimeout(draftTimer);
+        draftTimer = setTimeout(() => setDraft(draftConvo, textEl.value), 250);
       });
 
       // ---- Telling the room I'm typing -----------------------------------
