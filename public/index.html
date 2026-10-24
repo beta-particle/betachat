@@ -73,7 +73,7 @@
       to { opacity: 1; transform: none; }
     }
     @media (max-width: 799px) {
-      .app { overflow: hidden; }
+      .app { overflow: hidden; overflow: clip; }
       .leaving[hidden] { display: flex !important; pointer-events: none; }
       .layer-top, .layer-mid { position: absolute !important; left: 0; right: 0; top: 0; bottom: 0; will-change: transform; }
       .layer-top { z-index: 6; box-shadow: -12px 0 32px rgb(0 0 0 / 0.16); }
@@ -898,14 +898,16 @@
     .sheet-dim { display: none; }
     .dlg:focus { outline: 0; }
     @media (max-width: 799px) {
-      dialog { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: hidden; }
+      dialog { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: hidden; overflow: clip; }
       dialog[open] { display: flex; flex-direction: column; justify-content: flex-end; }
       dialog::backdrop { background: transparent; backdrop-filter: none; }
       .sheet-dim { display: block; position: absolute; inset: 0; background: rgb(10 16 13 / 0.5); }
       dialog > .dlg {
         position: relative; z-index: 1; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain;
         background: var(--surface); border-top: 1px solid var(--line); border-radius: 1.6rem 1.6rem 0 0;
-        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); box-shadow: var(--shadow-lg); will-change: transform;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); will-change: transform;
+        /* the first shadow is a solid slab of the sheet colour below it, so pulling up never shows a gap */
+        box-shadow: 0 80px 0 0 var(--surface), var(--shadow-lg);
       }
     }
 
@@ -940,6 +942,13 @@
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
     .toast svg { flex: none; color: var(--mine); }
     @media (prefers-reduced-motion: reduce) { .toast { transform: translate(-50%, 0); transition: opacity 0.15s ease; } }
+
+    /* ---- Touch: the app is not a document. No long-press selection or callouts, except in text fields ---- */
+    @media (pointer: coarse) {
+      body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      input, textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+      img, a { -webkit-touch-callout: none; -webkit-user-drag: none; }
+    }
 
     /* ---- Pressed states (touch) ----
        Hover is switched off where there is no hover (see the (hover: hover) wrappers above) so nothing
@@ -2270,7 +2279,9 @@
         const fly = (el, a, b) => anims.push(el.animate([{ transform: a }, { transform: b }], { duration: NAV_MS, easing: EASE, fill: "both" }));
         // A tab bar that is on screen both before and after stays put under the moving layer.
         if (kind === "push" && tabbar.hidden && !barWasHidden) { tabbar.hidden = false; undo.push(() => { tabbar.hidden = true; }); }
-        const inset = !barWasHidden && !tabbar.hidden ? tabbar.offsetHeight + "px" : "0px";
+        // The tab bar only stays visible under a layer that does not belong to the chat (a chat covers it).
+        const coversBar = from === views.chat || to === views.chat;
+        const inset = !coversBar && !barWasHidden && !tabbar.hidden ? tabbar.offsetHeight + "px" : "0px";
         cls(from, "leaving");
         const layer = (el, c) => { cls(el, c); el.style.bottom = inset; undo.push(() => { el.style.bottom = ""; }); };
 
@@ -3022,28 +3033,59 @@
       const sheets = [roomInfoDlg, dlg, profileDlg];
       const sheetParts = (d) => ({ panel: d.querySelector(".dlg"), dim: d.querySelector(".sheet-dim") });
       const sheetClosing = new WeakSet();
-      const SHEET_MS = 320;
+      const SHEET_MS = 360;
+
+      // The dim is driven from JS, frame by frame, rather than by a CSS animation, so that the browser's
+      // theme colour (the strip behind the clock and battery) can follow the exact same value. Left to
+      // itself that strip lags the page and the darkness lingers after the sheet has gone.
+      const themeMetas = [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => ({ m, base: m.content }));
+      const DIM_RGB = [10, 16, 13], DIM_ALPHA = 0.5;
+      const blendHex = (hex, a) => {
+        const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+        return "#" + c.map((v, i) => Math.round(v * (1 - a) + DIM_RGB[i] * a).toString(16).padStart(2, "0")).join("");
+      };
+      const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+      const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+      let dimRaf = 0;
+      function setDim(d, p) { // p: 0 (clear) to 1 (fully dimmed)
+        sheetParts(d).dim.style.opacity = String(p);
+        themeMetas.forEach((t) => { t.m.content = p <= 0.002 ? t.base : blendHex(t.base, DIM_ALPHA * p); });
+      }
+      function tweenDim(d, from, to, ms, ease) {
+        cancelAnimationFrame(dimRaf);
+        setDim(d, from);
+        if (!ms) { setDim(d, to); return; }
+        const t0 = performance.now();
+        const step = (now) => {
+          const k = Math.min(1, (now - t0) / ms);
+          setDim(d, from + (to - from) * ease(k));
+          if (k < 1) dimRaf = requestAnimationFrame(step);
+        };
+        dimRaf = requestAnimationFrame(step);
+      }
 
       function resetSheet(d) {
-        const { panel, dim } = sheetParts(d);
+        const { panel } = sheetParts(d);
+        cancelAnimationFrame(dimRaf);
         panel.getAnimations().forEach((a) => a.cancel());
-        dim.getAnimations().forEach((a) => a.cancel());
         panel.style.transform = "";
-        dim.style.opacity = "";
+        setDim(d, 0);
         sheetClosing.delete(d);
       }
 
       function openSheet(d) {
         if (d.open) return;
         d.showModal();
+        setDim(d, 0); // before the first paint, so it fades in instead of arriving at full strength
         // showModal() focuses the first control it finds; on a touch screen that would raise the keyboard.
         if (coarseMQ.matches && d.contains(document.activeElement) && document.activeElement !== d.querySelector(".dlg")) {
           document.activeElement.blur();
         }
-        if (!phoneMQ.matches || reduceMQ.matches) return;
-        const { panel, dim } = sheetParts(d);
+        if (!phoneMQ.matches) return;
+        if (reduceMQ.matches) { setDim(d, 1); return; }
+        const { panel } = sheetParts(d);
         panel.animate([{ transform: "translateY(100%)" }, { transform: "translateY(0)" }], { duration: SHEET_MS, easing: EASE });
-        dim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SHEET_MS, easing: "ease-out" });
+        tweenDim(d, 0, 1, SHEET_MS, easeInOut);
       }
 
       function closeNow(d) {
@@ -3056,12 +3098,12 @@
         if (!d.open || sheetClosing.has(d)) return;
         if (!phoneMQ.matches || reduceMQ.matches) { closeNow(d); return; }
         sheetClosing.add(d);
-        const { panel, dim } = sheetParts(d);
+        const { panel } = sheetParts(d);
         const h = panel.offsetHeight;
-        const ms = Math.max(140, 260 * (1 - fromY / (h || 1)));
-        panel.style.transform = dim.style.opacity = "";
+        const ms = Math.max(160, 280 * (1 - fromY / (h || 1)));
+        panel.style.transform = "";
         const a = panel.animate([{ transform: `translateY(${fromY}px)` }, { transform: `translateY(${h}px)` }], { duration: ms, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" });
-        dim.animate([{ opacity: fromDim }, { opacity: 0 }], { duration: ms, easing: "linear", fill: "forwards" });
+        tweenDim(d, fromDim, 0, ms, easeOut);
         a.onfinish = () => closeNow(d);
       }
 
@@ -3086,7 +3128,7 @@
 
         d.addEventListener("touchmove", (e) => {
           if (!drag) return;
-          const { panel, dim } = sheetParts(d);
+          const { panel } = sheetParts(d);
           const dy = e.touches[0].clientY - drag.y0;
           if (!drag.active) {
             if (Math.abs(dy) < 6) return;
@@ -3103,21 +3145,21 @@
           const K = 56;
           drag.off = dy >= 0 ? dy : -K * (1 - 1 / (1 + -dy / K));
           panel.style.transform = `translateY(${drag.off}px)`;
-          dim.style.opacity = String(Math.max(0, 1 - Math.max(0, drag.off) / (drag.h * 0.9)));
+          setDim(d, Math.max(0, 1 - Math.max(0, drag.off) / (drag.h * 0.9)));
         }, { passive: false });
 
         const release = () => {
           const g = drag;
           drag = null;
           if (!g || !g.active) return;
-          const { panel, dim } = sheetParts(d);
+          const { panel } = sheetParts(d);
           const first = g.samples[0], last = g.samples[g.samples.length - 1];
           const v = last.t > first.t ? (last.y - first.y) / (last.t - first.t) : 0; // px per ms, + is down
-          const dimNow = parseFloat(dim.style.opacity || "1");
+          const dimNow = parseFloat(sheetParts(d).dim.style.opacity || "1");
           if (g.off > g.h * 0.3 || (v > 0.5 && g.off > 20)) { closeSheet(d, g.off, dimNow); return; }
-          panel.style.transform = dim.style.opacity = ""; // spring back
+          panel.style.transform = ""; // spring back
           panel.animate([{ transform: `translateY(${g.off}px)` }, { transform: "translateY(0)" }], { duration: 300, easing: EASE });
-          dim.animate([{ opacity: dimNow }, { opacity: 1 }], { duration: 300, easing: "ease-out" });
+          tweenDim(d, dimNow, 1, 300, easeOut);
         };
         d.addEventListener("touchend", release);
         d.addEventListener("touchcancel", release);
