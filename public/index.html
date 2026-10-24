@@ -76,7 +76,7 @@
       .app { overflow: hidden; overflow: clip; }
       .leaving[hidden] { display: flex !important; pointer-events: none; }
       .layer-top, .layer-mid { position: absolute !important; left: 0; right: 0; top: 0; bottom: 0; will-change: transform; }
-      .layer-top { z-index: 6; box-shadow: -12px 0 32px rgb(0 0 0 / 0.16); }
+      .layer-top { z-index: 6; } /* its edge shadow is set from JS so it can fade with the movement */
       .layer-mid { z-index: 3; }
     }
 
@@ -2250,6 +2250,8 @@
       const NAV_DEPTH = { auth: 0, rooms: 0, messages: 0, account: 0, newRoom: 1, newMessage: 1, chat: 2 };
       const TAB_INDEX = { rooms: 0, messages: 1, account: 2 };
       const NAV_MS = 340;
+      const EDGE_SHADOW = 0.16;
+      const edgeShadow = (a) => `-12px 0 32px rgb(0 0 0 / ${a})`; // the soft edge on a screen that is sliding over another
       let currentScreen = null;
       let activeNav = null; // { anims, cleanup } while a transition or an edge swipe is in flight
 
@@ -2276,7 +2278,9 @@
       function runNav(kind, from, to, barWasHidden) {
         const anims = [], undo = [];
         const cls = (el, c) => { el.classList.add(c); undo.push(() => el.classList.remove(c)); };
-        const fly = (el, a, b) => anims.push(el.animate([{ transform: a }, { transform: b }], { duration: NAV_MS, easing: EASE, fill: "both" }));
+        const fly = (el, a, b, sa, sb) => anims.push(el.animate(
+          [{ transform: a, ...(sa === undefined ? {} : { boxShadow: edgeShadow(sa) }) }, { transform: b, ...(sb === undefined ? {} : { boxShadow: edgeShadow(sb) }) }],
+          { duration: NAV_MS, easing: EASE, fill: "both" }));
         // A tab bar that is on screen both before and after stays put under the moving layer.
         if (kind === "push" && tabbar.hidden && !barWasHidden) { tabbar.hidden = false; undo.push(() => { tabbar.hidden = true; }); }
         // The tab bar only stays visible under a layer that does not belong to the chat (a chat covers it).
@@ -2287,11 +2291,11 @@
 
         if (kind === "push") {
           layer(to, "layer-top");
-          fly(to, "translateX(100%)", "translateX(0)");
+          fly(to, "translateX(100%)", "translateX(0)", EDGE_SHADOW, EDGE_SHADOW);
           fly(from, "translateX(0)", "translateX(-28%)");
         } else if (kind === "pop") {
           layer(from, "layer-top");
-          fly(from, "translateX(0)", "translateX(100%)");
+          fly(from, "translateX(0)", "translateX(100%)", EDGE_SHADOW, 0); // shadow fades as it leaves, so nothing is left behind at the end
           fly(to, "translateX(-28%)", "translateX(0)");
         } else {
           const dir = kind === "tab-fwd" ? 1 : -1;
@@ -2375,7 +2379,7 @@
         cls(g.top, "layer-top");
         g.top.style.bottom = inset;
         const finish = () => {
-          g.top.style.transform = g.under.style.transform = g.top.style.bottom = "";
+          g.top.style.transform = g.under.style.transform = g.top.style.bottom = g.top.style.boxShadow = "";
           undo.forEach((u) => u());
         };
         const abort = () => { // back to exactly how it was
@@ -2393,6 +2397,7 @@
         const g = swipe;
         g.x = x;
         g.top.style.transform = `translateX(${x}px)`;
+        g.top.style.boxShadow = edgeShadow(EDGE_SHADOW * (1 - Math.min(1, x / g.W)));
         g.under.style.transform = `translateX(${-28 * (1 - Math.min(1, x / g.W))}%)`;
       }
 
@@ -2408,7 +2413,12 @@
         const left = Math.abs(to - g.x);
         const ms = reduceMQ.matches ? 0 : Math.max(120, Math.min(NAV_MS, (left / Math.max(0.6, Math.abs(v))) * 0.6));
         const opts = { duration: ms, easing: EASE, fill: "both" };
-        const a1 = g.top.animate([{ transform: `translateX(${g.x}px)` }, { transform: `translateX(${to}px)` }], opts);
+        const shadowNow = EDGE_SHADOW * (1 - Math.min(1, g.x / g.W));
+        g.top.style.boxShadow = "";
+        const a1 = g.top.animate([
+          { transform: `translateX(${g.x}px)`, boxShadow: edgeShadow(shadowNow) },
+          { transform: `translateX(${to}px)`, boxShadow: edgeShadow(commit ? 0 : EDGE_SHADOW) },
+        ], opts);
         const a2 = g.under.animate(
           [{ transform: `translateX(${-28 * (1 - Math.min(1, g.x / g.W))}%)` }, { transform: `translateX(${commit ? 0 : -28}%)` }], opts);
         g.nav.anims = [a1, a2];
@@ -3049,7 +3059,15 @@
       let dimRaf = 0;
       function setDim(d, p) { // p: 0 (clear) to 1 (fully dimmed)
         sheetParts(d).dim.style.opacity = String(p);
-        themeMetas.forEach((t) => { t.m.content = p <= 0.002 ? t.base : blendHex(t.base, DIM_ALPHA * p); });
+      }
+      // The strip behind the clock and battery belongs to the browser or OS, which glides to a new theme
+      // colour on its own schedule. Nudging it every frame just makes it chase the page, so it is set once
+      // at the start of each open or close and left to glide alongside the sheet. (Set this to false to
+      // leave the strip alone entirely.)
+      const TINT_STATUS_BAR = true;
+      function tintStatusBar(on) {
+        if (!TINT_STATUS_BAR) return;
+        themeMetas.forEach((t) => { t.m.content = on ? blendHex(t.base, DIM_ALPHA) : t.base; });
       }
       function tweenDim(d, from, to, ms, ease) {
         cancelAnimationFrame(dimRaf);
@@ -3070,6 +3088,7 @@
         panel.getAnimations().forEach((a) => a.cancel());
         panel.style.transform = "";
         setDim(d, 0);
+        tintStatusBar(false);
         sheetClosing.delete(d);
       }
 
@@ -3077,6 +3096,7 @@
         if (d.open) return;
         d.showModal();
         setDim(d, 0); // before the first paint, so it fades in instead of arriving at full strength
+        if (phoneMQ.matches) tintStatusBar(true);
         // showModal() focuses the first control it finds; on a touch screen that would raise the keyboard.
         if (coarseMQ.matches && d.contains(document.activeElement) && document.activeElement !== d.querySelector(".dlg")) {
           document.activeElement.blur();
@@ -3098,6 +3118,7 @@
         if (!d.open || sheetClosing.has(d)) return;
         if (!phoneMQ.matches || reduceMQ.matches) { closeNow(d); return; }
         sheetClosing.add(d);
+        tintStatusBar(false); // starts fading back now, in step with the sheet leaving
         const { panel } = sheetParts(d);
         const h = panel.offsetHeight;
         const ms = Math.max(160, 280 * (1 - fromY / (h || 1)));
