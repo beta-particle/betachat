@@ -699,6 +699,104 @@
       .app { max-width: 1440px; margin-inline: auto; box-shadow: var(--shadow-lg); }
       body { justify-content: center; }
     }
+    /* ===== Phone / SMS-style layer (see the betachat mobile redesign) =====
+       Messaging-app conventions: large list titles, full-width rows with hairlines, a centred
+       conversation header, tailed bubbles, a pill composer, and bottom sheets for dialogs.
+       Everything shared by phone and desktop is outside the media query; the rest is phone-only. */
+    :root { --bubble-in: #e6edea; }
+    @media (prefers-color-scheme: dark) { :root { --bubble-in: #24332d; } }
+
+    .chat { background: var(--surface); }
+    .bubble { box-shadow: none; border-radius: 18px; }
+    .msg:not(:has(+ .msg.grouped)) .bubble { border-radius: 18px 18px 18px 4px; }
+    .msg.mine .bubble { border-radius: 18px; }
+    .msg.mine:not(:has(+ .msg.grouped)) .bubble { border-radius: 18px 18px 4px 18px; }
+    .bubble { background: var(--bubble-in); }
+    .msg.mine .bubble { background: var(--mine); }
+    .msg.grouped { margin-top: 0.15rem; }
+    [data-convo="dm"] .msg-avatar, [data-convo="dm"] .who { display: none; } /* a DM has one other person: no need to name them on every message */
+
+    .composer-field { position: relative; flex: 1; min-width: 0; display: flex; }
+    .composer textarea { flex: 1; padding: 0.7rem 3.2rem 0.7rem 1.05rem; border-radius: 1.5rem; box-shadow: none; font-size: 1rem; }
+    .composer .btn.send {
+      position: absolute; right: 0.28rem; bottom: 0.28rem;
+      width: 2.35rem; height: 2.35rem; min-width: 0; min-height: 0; margin: 0; padding: 0;
+      display: flex; align-items: center; justify-content: center; border-radius: 50%;
+    }
+
+    .list-search { display: flex; align-items: center; gap: 0.5rem; height: 2.6rem; margin: 0 0 0.75rem; padding: 0 0.8rem; border-radius: 0.8rem; background: var(--bubble-in); color: var(--muted); }
+    .list-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; font-size: 1rem; box-shadow: none; }
+    .list-search input:disabled { opacity: 0.7; cursor: default; }
+    .room-tile { flex: none; width: 3rem; height: 3rem; display: none; align-items: center; justify-content: center; border-radius: 0.95rem; background: hsl(170 38% 34%); color: #fff; }
+    .room-tile svg { opacity: 1; }
+    .set-heading { margin: 1.25rem 0.4rem 0.4rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+    .set-list { list-style: none; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+    .set-list li + li { border-top: 1px solid var(--line); }
+    .set-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; min-height: 3.4rem; padding: 0 1rem; border: 0; background: none; color: var(--ink); font: inherit; font-size: 1.05rem; text-align: left; cursor: pointer; }
+    .set-row.danger { color: var(--danger); }
+    .set-row:disabled { cursor: default; color: var(--muted); }
+    .set-row .soon { font-size: 0.82rem; color: var(--muted); }
+    .account-card .btn { border-radius: 999px; background: var(--mine); color: var(--mine-ink); }
+
+    @media (min-width: 800px) { .room[data-room] .room-name::before { content: "#"; } } /* sidebar keeps the compact #name look */
+
+    @media (max-width: 799px) {
+      .room-tile { display: flex; }
+      .tab-screen { padding: 0 0 1rem; }
+      .tab-screen-inner { max-width: none; padding: 0 1rem; }
+      .tab-screen h1 { margin: 0; padding: max(3rem, calc(env(safe-area-inset-top, 0px) + 1.2rem)) 0.25rem 0.6rem; font-size: 2rem; }
+      .tab-screen .lede { margin: 0 0.25rem 0.9rem; font-size: 0.92rem; }
+      .tab-screen .my-rooms, .tab-screen .my-dms { margin: 0; }
+      .tab-screen .my-rooms h2, .tab-screen .my-dms h2 { display: none; }
+      .my-dms { margin-top: 0; }
+      .room-list { gap: 0; }
+      .my-rooms .room, .my-dms .room {
+        gap: 0.8rem; min-height: 4.5rem; padding: 0.55rem 0.4rem; border: 0; border-radius: 0;
+        border-bottom: 1px solid var(--line); background: none; font-size: 1.05rem;
+      }
+      .my-rooms .room:hover, .my-dms .room:hover { background: var(--surface-2); }
+      .my-rooms .room[aria-current="true"], .my-dms .room[aria-current="true"] { background: var(--surface-2); color: var(--ink); }
+      .my-rooms .room-name, .my-dms .room-name { font-weight: 600; }
+      .room.dm .avatar { --size: 3.1rem; flex: none; }
+      .dm-preview { font-size: 0.92rem; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .dm-time { font-size: 0.8rem; align-self: flex-start; padding-top: 0.2rem; }
+      .dm-unread { width: 0.65rem; height: 0.65rem; background: var(--mine); }
+      .tab-screen-cta {
+        position: fixed; right: 1rem; bottom: calc(5.4rem + env(safe-area-inset-bottom, 0px)); z-index: 2;
+        width: 3.5rem; height: 3.5rem; min-height: 0; padding: 0; gap: 0; border: 0; border-radius: 50%;
+        background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-md); font-size: 0; overflow: hidden;
+      }
+      .tab-screen-cta svg { width: 22px; height: 22px; }
+      #new-room-screen .tab-screen-inner, #new-message-screen .tab-screen-inner { padding-top: max(1rem, env(safe-area-inset-top, 0px)); }
+      .account-card { margin: 0.4rem 0 0; padding: 0.5rem 0 0.25rem; border: 0; box-shadow: none; background: none; gap: 0.35rem; }
+      .tabbar { background: var(--surface); }
+      .tabbar button[aria-current="true"] svg { stroke-width: 2.4; }
+      .tabbar button[aria-current="true"] { font-weight: 700; }
+
+      /* Conversation header: back chevron left, name and status centred, like an SMS thread */
+      .chat-head { box-shadow: none; padding-bottom: 0.45rem; }
+      .chat-head-inner { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); gap: 0.25rem; }
+      .chat-back { justify-self: start; color: var(--mine); font-size: 1rem; }
+      .chat-head-main { max-width: 100%; text-align: center; }
+      .chat-head-main .title-row, .chat-head-main .status { justify-content: center; }
+      .chat-head h1 { font-size: 1.05rem; }
+      .install-tip { padding: 0.5rem 1rem; align-items: center; background: #fdf1d2; color: #2a2000; font-size: 0.8rem; border-bottom: 0; }
+      .install-tip p { display: none; }
+      .install-tip .link { color: var(--mine); min-height: 2.75rem; }
+      .messages { padding: 0.5rem 0.75rem 0.75rem; }
+      .composer { border-top: 1px solid var(--line); background: var(--surface); padding-top: 0.5rem; }
+
+      /* Dialogs become bottom sheets */
+      dialog { width: 100%; max-width: none; margin: auto 0 0; border-width: 1px 0 0; border-radius: 1.6rem 1.6rem 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+      .dlg::before { content: ""; display: block; width: 2.5rem; height: 0.3rem; margin: -0.5rem auto 1rem; border-radius: 0.2rem; background: var(--line); }
+      #room-info .row { gap: 0; margin-top: 0.5rem; }
+      #room-info .row .link { width: 100%; min-height: 3.4rem; padding: 0 0.25rem; border-bottom: 1px solid var(--line); border-radius: 0; font-size: 1.05rem; text-align: left; color: var(--ink); }
+      #room-info .close, #settings .close { width: 100%; min-height: 3.1rem; margin-top: 1rem; border-radius: 1rem; background: var(--bubble-in); color: var(--ink); text-align: center; }
+
+      /* Sign-in: more air, bigger fields */
+      .join form h1 { font-size: 2.1rem; }
+      .join input { height: 3.1rem; font-size: 1rem; }
+    }
   </style>
 </head>
 <body>
@@ -770,6 +868,7 @@
       <div class="tab-screen-inner">
         <h1 id="rooms-title">Rooms</h1>
         <p class="lede">Chat rooms you're part of. Anyone with the link can find a public one; private rooms need a password.</p>
+        <label class="list-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span class="sr">Search</span><input type="search" placeholder="Search (coming soon)" disabled></label>
         <section class="my-rooms" id="my-rooms" aria-labelledby="my-rooms-title">
           <h2 id="my-rooms-title">Your rooms</h2>
           <ul class="room-list" data-room-list></ul>
@@ -810,6 +909,7 @@
       <div class="tab-screen-inner">
         <h1 id="messages-title">Messages</h1>
         <p class="lede">Private, one-to-one conversations with other betachat accounts.</p>
+        <label class="list-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span class="sr">Search</span><input type="search" placeholder="Search (coming soon)" disabled></label>
         <section class="my-rooms my-dms" id="my-dms" aria-labelledby="my-dms-title">
           <h2 id="my-dms-title">Direct messages</h2>
           <ul class="room-list" data-dm-list></ul>
@@ -850,11 +950,17 @@
           <p class="account-name" id="me-name"></p>
           <button class="btn profile-open" type="button">Change profile picture</button>
         </div>
-        <div class="account-section">
-          <h2>Session</h2>
-          <button class="link" type="button" id="logout">Log out</button>
-        </div>
-        <p class="hint">More account settings will land here as betachat grows.</p>
+        <h2 class="set-heading">Preferences</h2>
+        <ul class="set-list">
+          <li><button class="set-row" type="button" disabled><span>Alerts on this device</span><span class="soon">Per room for now</span></button></li>
+          <li><button class="set-row" type="button" disabled><span>Username</span><span class="soon">Coming soon</span></button></li>
+          <li><button class="set-row" type="button" disabled><span>Password</span><span class="soon">Coming soon</span></button></li>
+        </ul>
+        <h2 class="set-heading">Session</h2>
+        <ul class="set-list">
+          <li><button class="set-row danger" type="button" id="logout"><span>Log out</span></button></li>
+        </ul>
+        <p class="hint">There is no password reset, so keep your password somewhere safe.</p>
       </div>
     </section>
 
@@ -904,8 +1010,12 @@
 
       <form class="composer" id="composer">
         <label class="sr" for="text">Message</label>
-        <textarea id="text" rows="1" maxlength="500" placeholder="Write a message"></textarea>
-        <button class="btn" type="submit">Send</button>
+        <div class="composer-field">
+          <textarea id="text" rows="1" maxlength="500" placeholder="Message"></textarea>
+          <button class="btn send" type="submit" aria-label="Send">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
       </form>
     </section>
 
@@ -1106,6 +1216,7 @@
 
       function applyRoom() {
         updateTitle();
+        document.getElementById("chat").dataset.convo = convoType; // lets CSS tell a DM from a room
         chatBackLabel.textContent = convoType === "dm" ? "Messages" : "Rooms";
         if (convoType === "dm") {
           roomTitle.textContent = peerName || peerKey;
@@ -1194,6 +1305,8 @@
         return list.sort((a, b) => a.name.localeCompare(b.name));
       }
 
+      const HASH_TILE = '<span class="room-tile" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg></span>';
+
       function makeRoomRow(r) {
         const li = document.createElement("li");
         const button = document.createElement("button");
@@ -1202,7 +1315,8 @@
         button.dataset.room = r.name;
         const name = document.createElement("span");
         name.className = "room-name";
-        name.textContent = `#${r.name}`; // textContent, like everything else that comes from a name
+        name.textContent = r.name; // textContent, like everything else that comes from a name
+        button.insertAdjacentHTML("beforeend", HASH_TILE); // fixed markup, no user data
         button.append(name);
         if (r.private) button.insertAdjacentHTML("beforeend", LOCK_ICON); // fixed markup, no user data
         li.append(button);
