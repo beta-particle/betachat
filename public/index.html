@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>betachat</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
@@ -845,6 +845,66 @@
       .account-card { align-items: center; padding-bottom: 0.5rem; }
       .set-list { margin: 0; border-radius: 1rem; }
     }
+    /* ---- New room / new message / room info: match the artboards ---- */
+    html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; }
+    .field-prefix { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.85rem; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--muted); }
+    .field-prefix:focus-within { border-color: var(--mine); }
+    .field-prefix input { flex: 1; min-width: 0; width: auto; padding-inline: 0; border: 0; border-radius: 0; background: none; color: var(--ink); outline: 0; }
+    @media (max-width: 799px) {
+      #new-room-screen .tab-screen-inner, #new-message-screen .tab-screen-inner { position: relative; padding-top: max(0.4rem, env(safe-area-inset-top, 0px)); }
+      .tab-back { margin: 0 0 0.6rem -0.35rem; padding: 0 0.6rem; min-height: 2.75rem; color: var(--mine); font-size: 1rem; }
+      #new-room-screen .join-card, #new-message-screen .join-card { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: none; }
+      #new-room-screen .join-card h2, #new-message-screen .join-card h2 {
+        position: absolute; left: 0; right: 0; top: max(0.4rem, env(safe-area-inset-top, 0px)); height: 2.75rem; margin: 0;
+        line-height: 2.75rem; text-align: center; font-size: 1.06rem; font-weight: 700; pointer-events: none;
+      }
+      .join-card .lede { max-width: none; margin: 0.5rem 0.1rem 0.4rem; font-size: 1rem; }
+      .join-card label { margin: 1.1rem 0 0.4rem; font-size: 0.88rem; }
+      .join-card input, .field-prefix { min-height: 3.1rem; }
+      .field-prefix input { min-height: 3rem; }
+      .join-card .btn { min-height: 3.25rem; margin-top: 1.4rem; border-radius: 1rem; font-size: 1.05rem; }
+      .join-card .hint { font-size: 0.82rem; }
+      /* Room info sheet: icon-chip rows */
+      .dlg h2 { font-size: 1.4rem; margin-bottom: 0.4rem; }
+      #room-info .row .link { display: flex; align-items: center; gap: 0.75rem; }
+      #room-info .row .link::before { content: ""; flex: none; width: 2rem; height: 2rem; border-radius: 0.6rem; background: var(--bubble-in) center / 18px no-repeat; }
+      #room-info .row #settings-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1'/%3E%3C/svg%3E"); }
+      #room-info .row .profile-open::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4 3.6-6 8-6s8 2 8 6'/%3E%3C/svg%3E"); }
+      #room-info .row #copy::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1'/%3E%3C/svg%3E"); }
+      #room-info .row #alerts-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E"); }
+      @media (prefers-color-scheme: dark) {
+        #room-info .row #settings-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1'/%3E%3C/svg%3E"); }
+        #room-info .row .profile-open::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4 3.6-6 8-6s8 2 8 6'/%3E%3C/svg%3E"); }
+        #room-info .row #copy::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1'/%3E%3C/svg%3E"); }
+        #room-info .row #alerts-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E"); }
+      }
+    }
+    /* ---- Sign-in, profile picture and room settings: match the artboards ---- */
+    .auth-wordmark { display: none; }
+    @media (pointer: coarse) {
+      input:focus-visible, textarea:focus-visible, .btn:focus-visible, dialog .link:focus-visible { outline: 0; }
+    }
+    @media (max-width: 799px) {
+      .join { padding: max(2.5rem, env(safe-area-inset-top, 0px)) 1.5rem 2rem; }
+      .join form { margin: 1.5rem 0 0; max-width: none; }
+      .auth-wordmark { display: flex; padding: 0; margin: 0; font-size: 1.25rem; }
+      .join form h1 { margin: 2.6rem 0 0; font-size: 2.1rem; line-height: 1.1; letter-spacing: -0.02em; }
+      .join form .lede { max-width: none; margin: 0.5rem 0 0; font-size: 1rem; }
+      .join .btn { min-height: 3.25rem; margin-top: 0.5rem; border-radius: 1rem; font-size: 1.05rem; }
+      .switch { margin-top: 1.25rem; text-align: center; font-size: 0.95rem; }
+      .switch .link { min-height: 2.75rem; color: var(--mine); font-size: 0.95rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+      .join .hint { font-size: 0.82rem; }
+
+      .dlg { padding: 1.4rem 1.25rem 1rem; }
+      .dlg .btn { width: 100%; min-height: 3.1rem; margin-top: 0.9rem; border-radius: 0.9rem; font-size: 1rem; }
+      .dlg .btn:disabled { opacity: 0.4; }
+      .dlg .row { flex-direction: column; align-items: stretch; gap: 0.15rem; }
+      #pw-remove, #avatar-remove { width: 100%; min-height: 3rem; text-align: center; color: var(--mine); font-size: 0.98rem; }
+      .dlg .close, #profile .close { display: block; width: 100%; min-height: 3.1rem; margin-top: 1rem; border-radius: 1rem; background: var(--bubble-in); color: var(--ink); text-align: center; }
+      .dlg hr { margin: 1.25rem 0 1rem; }
+      .profile-preview { margin: 1.25rem 0 0.75rem; }
+      .profile-pic .row { margin-top: 0.5rem; }
+    }
   </style>
 </head>
 <body>
@@ -896,7 +956,8 @@
 
     <section class="join" id="auth" hidden>
       <form id="auth-form" novalidate>
-        <h1>betachat</h1>
+        <p class="wordmark auth-wordmark">betachat</p>
+        <h1 id="auth-title">Welcome back</h1>
         <p class="lede" id="auth-lede"></p>
 
         <label for="auth-user">Username</label>
@@ -931,8 +992,7 @@
     <section class="tab-screen" id="new-room-screen" hidden>
       <div class="tab-screen-inner">
         <button class="tab-back" type="button" id="new-room-back">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-          Rooms
+          Cancel
         </button>
         <div class="join-card">
           <form id="join-form" novalidate>
@@ -940,7 +1000,7 @@
             <p class="lede">Enter a room name. If it doesn't exist yet, it's created. Add a password to make a new room private.</p>
 
             <label for="room-input">Room</label>
-            <input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false">
+            <span class="field-prefix"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg><input id="room-input" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="general"></span>
 
             <label for="pw-input">Password (optional)</label>
             <input id="pw-input" type="password" maxlength="128" autocomplete="off" aria-describedby="pw-hint">
@@ -972,8 +1032,7 @@
     <section class="tab-screen" id="new-message-screen" hidden>
       <div class="tab-screen-inner">
         <button class="tab-back" type="button" id="new-message-back">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-          Messages
+          Cancel
         </button>
         <div class="join-card">
           <form id="dm-form" novalidate>
@@ -1145,6 +1204,15 @@
   </dialog>
 
   <script>
+    // Behave like an app, not a page: no pinch zoom, no double-tap zoom (iOS ignores user-scalable on its own).
+    ["gesturestart", "gesturechange", "gestureend"].forEach((t) => document.addEventListener(t, (e) => e.preventDefault()));
+    document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    let lastTouchEnd = 0;
+    document.addEventListener("touchend", (e) => {
+      const now = Date.now();
+      if (now - lastTouchEnd < 300 && !e.target.closest("textarea, input")) e.preventDefault();
+      lastTouchEnd = now;
+    }, { passive: false });
     (() => {
       const $ = (sel) => document.querySelector(sel);
       const MIN_ROOM_PASSWORD = 6;
@@ -2094,9 +2162,10 @@
       let registering = false;
       function setAuthMode(register) {
         registering = register;
+        $("#auth-title").textContent = register ? "Create your account" : "Welcome back";
         authLede.textContent = register
-          ? "Create an account. Your username is how everyone will see you."
-          : "Log in to chat.";
+          ? "Your username is how everyone will see you."
+          : "Log in to pick up your rooms and messages.";
         authBtn.textContent = register ? "Create account" : "Log in";
         authHint.hidden = !register;
         authPw.autocomplete = register ? "new-password" : "current-password";
