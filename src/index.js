@@ -446,6 +446,26 @@ async function handleApi(request, env, url) {
     return json({ conversations: await users.listConversations(session.key) });
   }
 
+  // Unread count and last message for the rooms this browser remembers. Each room only answers for people
+  // who have actually been let into it, so a private room reveals nothing to anyone else.
+  if (url.pathname === "/api/rooms/status" && request.method === "GET") {
+    const token = getCookie(request, COOKIE);
+    const session = token ? await users.whoami(token) : null;
+    if (!session) return json({ error: "Not logged in." }, 401);
+    const names = String(url.searchParams.get("rooms") || "").split(",").slice(0, 30);
+    const rooms = {};
+    await Promise.all(
+      names.map(async (name) => {
+        try {
+          const stub = env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(cleanRoom(name)));
+          const status = await stub.statusFor(session.key);
+          if (status) rooms[name] = status;
+        } catch {}
+      })
+    );
+    return json({ rooms });
+  }
+
   // Anyone logged in can look at anyone's picture (the name is the lookup key)
   if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") return getAvatar(request, env, url);
 
@@ -955,6 +975,16 @@ export class ChatRoom extends DurableObject {
       )
     `);
 
+    // Who has been let into this room and how far they have read (the newest message id they have seen).
+    // A row exists only for people who got in, password and all, so it also answers "may this person see
+    // the room's unread count and last message?" for the Rooms list.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS members (
+        key     TEXT    PRIMARY KEY,
+        read_id INTEGER NOT NULL
+      )
+    `);
+
     // Wrong-password counters per IP; rows are deleted once they are older than LOCK_MS
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS auth_attempts (
@@ -1026,7 +1056,10 @@ export class ChatRoom extends DurableObject {
         if (data.typing === true || data.typing === false) this.typing(ws, meta, data.typing);
         return;
       case "away":
-        if (typeof data.away === "boolean" && data.away !== !!meta.away) ws.serializeAttachment({ ...meta, away: data.away });
+        if (typeof data.away === "boolean" && data.away !== !!meta.away) {
+          ws.serializeAttachment({ ...meta, away: data.away });
+          if (!data.away) this.markReadUpTo(meta.key, this.newestId()); // came back to look: it is all read now
+        }
         return;
       case "push_subscribe":
         return this.pushSubscribe(ws, meta, data.subscription);
@@ -1102,6 +1135,12 @@ export class ChatRoom extends DurableObject {
     const message = storeMessage(this.sql, meta, text, now, data.replyTo);
 
     this.broadcast({ type: "message", message });
+
+    // Whoever is looking at the room right now has read it (the sender too); everyone else will see it as unread
+    for (const socket of this.liveSockets()) {
+      const info = socket.deserializeAttachment() || {};
+      if (info.key === meta.key || !info.away) this.markReadUpTo(info.key, message.id);
+    }
 
     // Everyone connected has it now; tell the people who aren't looking
     await this.pushToAway(meta, text);
@@ -1296,6 +1335,7 @@ export class ChatRoom extends DurableObject {
 
     const current = ws.deserializeAttachment() || {};
     ws.serializeAttachment({ ...current, authed: true });
+    this.markReadUpTo(meta.key, this.newestId()); // they are about to be shown everything up to here
 
     const history = recentMessages(this.sql, HISTORY_LIMIT);
     ws.send(JSON.stringify({ type: "joined", private: !!config.private, owner: isOwner, created }));
@@ -1340,6 +1380,7 @@ export class ChatRoom extends DurableObject {
     // Everyone else was let in by the old password (or by the room being public):
     // sign them out so only people who get the new password stay.
     this.sql.exec("DELETE FROM push_subs WHERE cid != ?", meta.key); // signed out, so no more notifications either
+    this.sql.exec("DELETE FROM members WHERE key != ?", meta.key); // ...and no more look at the unread count until they re-enter the password
     this.closeOthers(meta.sid, {
       type: "kicked",
       message: `${meta.user} set a new password for this room. Enter it to rejoin.`,
@@ -1445,6 +1486,34 @@ export class ChatRoom extends DurableObject {
 
   clearFails(ip) {
     this.sql.exec("DELETE FROM auth_attempts WHERE ip = ?", ip);
+  }
+
+  // ---- Who has read what: unread counts for the Rooms list ----------------
+  markReadUpTo(key, id) {
+    if (!key || !Number.isSafeInteger(id)) return;
+    this.sql.exec(
+      "INSERT INTO members (key, read_id) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET read_id = MAX(read_id, excluded.read_id)",
+      key,
+      id
+    );
+  }
+
+  newestId() {
+    const row = this.sql.exec("SELECT MAX(id) AS id FROM messages").toArray()[0];
+    return row && row.id ? row.id : 0;
+  }
+
+  // Asked by the worker for the Rooms list. Only people who have been let in get an answer; for anyone
+  // else this says nothing at all, not even whether the room exists. `unread` is capped at 99.
+  statusFor(key) {
+    const member = this.sql.exec("SELECT read_id FROM members WHERE key = ?", key).toArray()[0];
+    if (!member || !this.getConfig()) return null;
+    const unread = this.sql.exec("SELECT COUNT(*) AS n FROM messages WHERE id > ? AND cid != ?", member.read_id, key).one().n;
+    const last = this.sql.exec("SELECT cid, name, text, ts FROM messages ORDER BY id DESC LIMIT 1").toArray()[0];
+    return {
+      unread: Math.min(unread, 99),
+      last: last ? { mine: last.cid === key, name: last.name, text: Array.from(last.text).slice(0, 80).join(""), ts: last.ts } : null,
+    };
   }
 
   // ---- Broadcasting (only to sockets that have joined) --------------------
