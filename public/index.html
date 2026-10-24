@@ -969,6 +969,82 @@
       .my-rooms .room[aria-current="true"]:active, .my-dms .room[aria-current="true"]:active { background: rgb(60 80 72 / 0.14); }
       .link:active { text-decoration: none; }
     }
+
+    /* ---- Replies, reactions and the message menu ---- */
+    .messages { overflow-x: hidden; } /* a message being swiped sideways must never make the list scroll sideways */
+    .msg { position: relative; touch-action: pan-y; } /* vertical scrolling stays the browser's; sideways belongs to swipe-to-reply */
+    .swipe-reply {
+      position: absolute; left: -2.7rem; top: 50%; width: 2rem; height: 2rem; margin-top: -1rem;
+      display: flex; align-items: center; justify-content: center; border-radius: 50%;
+      background: var(--bubble-in); color: var(--muted); opacity: 0; pointer-events: none;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+    .swipe-reply.armed { background: var(--accent); color: var(--accent-ink); }
+    @media (hover: none) {
+      .msg { -webkit-touch-callout: none; }
+      .bubble { -webkit-user-select: none; user-select: none; } /* long-press opens our menu instead of text selection */
+    }
+
+    .quote {
+      display: block; width: 100%; margin: 0 0 0.4rem; padding: 0.25rem 0.55rem;
+      border: 0; border-left: 3px solid var(--accent); border-radius: 6px 10px 10px 6px;
+      background: rgb(128 128 128 / 0.16);
+      background: color-mix(in srgb, currentColor 12%, transparent);
+      color: inherit; font: inherit; font-size: 0.85rem; line-height: 1.3; text-align: left; white-space: normal; cursor: pointer;
+    }
+    .quote-who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 700; opacity: 0.9; }
+    .quote-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; opacity: 0.8; }
+    .bubble.flash { animation: bubble-flash 1.3s ease-out; }
+    @keyframes bubble-flash { 0%, 25% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+    /* Chips overlap the bottom edge of the bubble (so the sender's picture still lines up with the bubble, not the chips);
+       the row below makes room for them. */
+    .msg-body { position: relative; }
+    .msg.has-reactions { margin-bottom: 1.35rem; }
+    .reactions { position: absolute; top: 100%; left: 0.4rem; z-index: 1; display: flex; gap: 0.25rem; width: max-content; max-width: 80vw; margin-top: -0.55rem; }
+    .msg.mine .reactions { left: auto; right: 0.4rem; }
+    .react-chip {
+      position: relative; display: inline-flex; align-items: center; gap: 0.25rem; min-height: 1.75rem; padding: 0 0.5rem;
+      border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink);
+      font: inherit; font-size: 0.9rem; line-height: 1; cursor: pointer;
+    }
+    .react-chip::after { content: ""; position: absolute; inset: -0.35rem -0.15rem; } /* a bigger tap area than the chip looks */
+    .react-chip[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+    .react-count { font-size: 0.75rem; font-weight: 700; color: var(--muted); }
+
+    .msg.pressed .bubble { transform: scale(1.03); box-shadow: 0 0 0 2px var(--accent); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .msg.mine.pressed .bubble { transform-origin: right center; }
+    .msg:not(.mine).pressed .bubble { transform-origin: left center; }
+
+    .msg-menu-back { position: fixed; inset: 0; z-index: 90; background: transparent; }
+    .msg-menu {
+      position: fixed; z-index: 91; min-width: 12.5rem; padding: 0.3rem;
+      background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-lg);
+      animation: menu-in 0.14s ease-out;
+    }
+    @keyframes menu-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+    .msg-menu button {
+      display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 2.9rem; padding: 0 0.8rem;
+      border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+    }
+    .msg-menu button:active { background: var(--bg); }
+    .msg-menu button:focus-visible { outline: 2px solid var(--mine); outline-offset: -2px; }
+    @media (hover: hover) { .msg-menu button:hover { background: var(--bg); } }
+    .msg-menu svg { flex: none; color: var(--muted); }
+    .mm-emojis { display: flex; gap: 0.1rem; }
+    .mm-emojis button { width: 2.9rem; justify-content: center; padding: 0; font-size: 1.55rem; line-height: 1; }
+    .mm-emojis button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 28%, var(--surface)); }
+    @media (prefers-reduced-motion: reduce) { .msg-menu { animation: none; } .msg.pressed .bubble { transition: none; } }
+
+    /* "Replying to ..." sits inside the composer, above the text field, so it shares the composer's background and border */
+    .composer { flex-wrap: wrap; row-gap: 0.45rem; }
+    .reply-bar { flex: 0 0 100%; display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+    .reply-bar-body { flex: 1; min-width: 0; padding: 0.3rem 0.65rem; border-left: 3px solid var(--accent); border-radius: 6px; background: var(--bubble-in); }
+    .reply-who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+    .reply-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.88rem; color: var(--muted); }
+    .reply-close { flex: none; display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+    .reply-close:active { background: var(--bubble-in); }
+    @media (hover: hover) { .reply-close:hover { background: var(--bubble-in); } }
   </style>
 </head>
 <body>
@@ -1183,6 +1259,15 @@
       <p class="typing" id="typing"><span class="dots" id="typing-dots" aria-hidden="true" hidden><i></i><i></i><i></i></span><span class="typing-text" id="typing-text"></span></p>
 
       <form class="composer" id="composer">
+        <div class="reply-bar" id="reply-bar" hidden>
+          <div class="reply-bar-body">
+            <span class="reply-who" id="reply-who"></span>
+            <span class="reply-text" id="reply-text"></span>
+          </div>
+          <button class="reply-close" type="button" id="reply-close" aria-label="Cancel reply">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
         <label class="sr" for="text">Message</label>
         <div class="composer-field">
           <textarea id="text" rows="1" maxlength="500" placeholder="Message"></textarea>
@@ -1280,6 +1365,25 @@
   <div class="toast" id="toast" role="status" aria-live="polite" hidden>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
     <span id="toast-text"></span>
+  </div>
+
+  <div class="msg-menu-back" id="msg-menu-back" hidden></div>
+  <div class="msg-menu" id="msg-menu" role="menu" aria-label="Message actions" hidden>
+    <div id="mm-actions">
+      <button type="button" role="menuitem" data-act="copy">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+        Copy
+      </button>
+      <button type="button" role="menuitem" data-act="reply">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v3"/></svg>
+        Reply
+      </button>
+      <button type="button" role="menuitem" data-act="react">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.2 4.2 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>
+        React
+      </button>
+    </div>
+    <div class="mm-emojis" id="mm-emojis" role="group" aria-label="Choose a reaction" hidden></div>
   </div>
 
   <script>
@@ -2151,18 +2255,400 @@
           body.append(head);
         }
 
-        const bubble = document.createElement("p");
+        const bubble = document.createElement("div");
         bubble.className = "bubble";
-        bubble.textContent = m.text; // textContent, never innerHTML: messages can't inject HTML
+        if (m.reply && typeof m.reply === "object") bubble.append(makeQuote(m.reply));
+        const words = document.createElement("span");
+        words.textContent = m.text; // textContent, never innerHTML: messages can't inject HTML
+        bubble.append(words);
         bubble.title = new Date(m.ts).toLocaleString();
         body.append(bubble);
         el.append(slot, body);
+
+        // Everything the menu, swipe, quotes and reactions need to find this message again
+        el.dataset.id = m.id;
+        m.reactions = cleanReactions(m.reactions);
+        const entry = { m, el, body, bubble, reactionsEl: null };
+        entries.set(m.id, entry);
+        renderReactions(entry, false);
 
         emptyEl.hidden = true;
         listEl.append(el);
         lastMsg = m;
         if (stick) listEl.scrollTop = listEl.scrollHeight;
       }
+
+      // ---- Replies, reactions and the message menu -------------------------------
+      // Every message on screen is registered here by its id: the menu, the swipe gesture, quotes
+      // (tap to jump to the original) and reaction updates from the server all look messages up in it.
+      const entries = new Map(); // id -> { m, el, body, bubble, reactionsEl }
+      const REACTIONS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"]; // the server accepts exactly these
+      const convoKey = () => (convoType === "dm" ? `dm:${peerKey}` : `room:${room}`);
+      const ICON_REPLY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v3"/></svg>';
+
+      // Whatever the server sent, keep only known emoji with lists of names
+      function cleanReactions(raw) {
+        const out = {};
+        if (raw && typeof raw === "object") {
+          for (const emoji of REACTIONS) {
+            const list = raw[emoji];
+            if (Array.isArray(list)) {
+              const names = list.filter((name) => typeof name === "string");
+              if (names.length) out[emoji] = names;
+            }
+          }
+        }
+        return out;
+      }
+
+      function makeQuote(reply) {
+        const quote = document.createElement("button");
+        quote.type = "button";
+        quote.className = "quote";
+        quote.dataset.replyId = reply.id;
+        quote.setAttribute("aria-label", "Show the message this replies to");
+        const who = document.createElement("span");
+        who.className = "quote-who";
+        who.textContent = reply.cid === myKey ? "You" : String(reply.name ?? "");
+        const words = document.createElement("span");
+        words.className = "quote-text";
+        words.textContent = String(reply.text ?? "");
+        quote.append(who, words);
+        return quote;
+      }
+
+      function jumpToMessage(id) {
+        const target = entries.get(id);
+        if (!target) { showToast("That message is further back"); return; }
+        target.el.scrollIntoView({ block: "center", behavior: reduceMQ.matches ? "auto" : "smooth" });
+        target.bubble.classList.remove("flash");
+        void target.bubble.offsetWidth; // so it can play again
+        target.bubble.classList.add("flash");
+        target.bubble.addEventListener("animationend", () => target.bubble.classList.remove("flash"), { once: true });
+      }
+
+      // ---- Reactions
+      const myReaction = (entry) => REACTIONS.find((emoji) => (entry.m.reactions[emoji] || []).includes(myKey)) || null;
+
+      function renderReactions(entry, scroll = true) {
+        const stick = scroll && nearBottom();
+        const emojis = REACTIONS.filter((emoji) => (entry.m.reactions[emoji] || []).length);
+        entry.el.classList.toggle("has-reactions", emojis.length > 0);
+        if (!emojis.length) {
+          if (entry.reactionsEl) { entry.reactionsEl.remove(); entry.reactionsEl = null; }
+        } else {
+          if (!entry.reactionsEl) {
+            entry.reactionsEl = document.createElement("div");
+            entry.reactionsEl.className = "reactions";
+            entry.body.append(entry.reactionsEl);
+          }
+          entry.reactionsEl.replaceChildren(...emojis.map((emoji) => {
+            const names = entry.m.reactions[emoji];
+            const mine = names.includes(myKey);
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "react-chip";
+            chip.dataset.emoji = emoji;
+            chip.setAttribute("aria-pressed", String(mine));
+            chip.setAttribute("aria-label", `${emoji} ${names.length}${mine ? ", including you" : ""}. ${mine ? "Remove your reaction" : "React the same"}`);
+            chip.append(document.createTextNode(emoji));
+            if (names.length > 1) {
+              const count = document.createElement("span");
+              count.className = "react-count";
+              count.textContent = names.length;
+              chip.append(count);
+            }
+            return chip;
+          }));
+        }
+        if (stick) listEl.scrollTop = listEl.scrollHeight;
+      }
+
+      function applyReactions(id, raw) {
+        const entry = entries.get(id);
+        if (!entry) return;
+        entry.m.reactions = cleanReactions(raw);
+        renderReactions(entry);
+      }
+
+      function sendReaction(id, emoji) {
+        if (!joined || !ws || ws.readyState !== WebSocket.OPEN) { notify("Not connected yet."); return; }
+        ws.send(JSON.stringify({ type: "react", id, emoji })); // the server toggles it and tells everyone
+      }
+
+      // ---- The reply bar above the text box
+      const replyBar = $("#reply-bar"), replyWho = $("#reply-who"), replyText = $("#reply-text");
+      let replyTarget = null; // { id, convo } - which message the next one answers, and in which conversation
+
+      function startReply(m) {
+        const stick = nearBottom();
+        replyTarget = { id: m.id, convo: convoKey() };
+        replyWho.textContent = m.cid === myKey ? "Replying to yourself" : `Replying to ${m.name}`;
+        replyText.textContent = String(m.text).replace(/\s+/g, " ");
+        replyBar.hidden = false;
+        if (stick) listEl.scrollTop = listEl.scrollHeight;
+        textEl.focus();
+      }
+
+      function clearReply() {
+        if (!replyTarget) return;
+        const stick = nearBottom();
+        replyTarget = null;
+        replyBar.hidden = true;
+        if (stick) listEl.scrollTop = listEl.scrollHeight;
+      }
+
+      $("#reply-close").addEventListener("click", () => { clearReply(); textEl.focus(); });
+      textEl.addEventListener("keydown", (event) => { if (event.key === "Escape" && replyTarget) clearReply(); });
+
+      // ---- The long-press / right-click menu
+      const menu = $("#msg-menu"), menuBack = $("#msg-menu-back"), menuActions = $("#mm-actions"), menuEmojis = $("#mm-emojis");
+      let menuFor = null, menuOpenedAt = 0, suppressClickUntil = 0;
+
+      for (const emoji of REACTIONS) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("role", "menuitem");
+        button.dataset.emoji = emoji;
+        button.setAttribute("aria-label", `React with ${emoji}`);
+        button.textContent = emoji;
+        menuEmojis.append(button);
+      }
+
+      async function copyText(text) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Older browsers, or a page that isn't https: fall back to selecting a hidden box
+          const box = document.createElement("textarea");
+          box.value = text;
+          box.setAttribute("readonly", "");
+          box.style.cssText = "position:fixed;top:0;left:-1000px;opacity:0";
+          document.body.append(box);
+          box.select();
+          box.setSelectionRange(0, text.length);
+          let copied = false;
+          try { copied = document.execCommand("copy"); } catch {}
+          box.remove();
+          if (!copied) throw new Error("copy failed");
+        }
+      }
+
+      // Next to the pressed message: below it if there is room, else above, always on screen. The
+      // keyboard-aware visual viewport is used where there is one, so the menu never ends up under it.
+      function placeMenu(entry) {
+        const rect = entry.bubble.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const top0 = vv ? vv.offsetTop : 0;
+        const bottom0 = vv ? vv.offsetTop + vv.height : innerHeight;
+        if (rect.bottom < top0 || rect.top > bottom0) { closeMenu(); return; } // scrolled out of sight
+        const M = 8, gap = 8, w = menu.offsetWidth, h = menu.offsetHeight;
+        let left = entry.m.cid === myKey ? rect.right - w : rect.left;
+        left = Math.max(M, Math.min(left, innerWidth - w - M));
+        let top = rect.bottom + gap;
+        if (top + h + M > bottom0) top = rect.top - gap - h;
+        top = Math.min(Math.max(top, top0 + M), bottom0 - h - M);
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+      }
+
+      function openMenu(entry, byTouch) {
+        closeMenu();
+        menuFor = entry;
+        menuOpenedAt = Date.now();
+        entry.el.classList.add("pressed");
+        menuActions.hidden = false;
+        menuEmojis.hidden = true;
+        menuBack.hidden = false;
+        menu.hidden = false;
+        placeMenu(entry);
+        // Focus the first item for mouse and keyboard; on a touch screen leave the keyboard where it is
+        if (!byTouch && menuFor) menu.querySelector("button").focus({ preventScroll: true });
+      }
+
+      function closeMenu() {
+        if (!menuFor) return;
+        menuFor.el.classList.remove("pressed");
+        menuFor = null;
+        menu.hidden = true;
+        menuBack.hidden = true;
+      }
+
+      function showEmojiPicker() {
+        const entry = menuFor;
+        if (!entry) return;
+        const mine = myReaction(entry);
+        menuEmojis.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.emoji === mine)));
+        menuActions.hidden = true;
+        menuEmojis.hidden = false;
+        placeMenu(entry);
+        if (!coarseMQ.matches) menuEmojis.querySelector("button").focus({ preventScroll: true });
+      }
+
+      menu.addEventListener("click", async (event) => {
+        const button = event.target.closest("button");
+        const entry = menuFor;
+        if (!button || !entry) return;
+        if (button.dataset.emoji) {
+          sendReaction(entry.m.id, button.dataset.emoji);
+          closeMenu();
+          return;
+        }
+        switch (button.dataset.act) {
+          case "copy":
+            closeMenu();
+            try { await copyText(entry.m.text); haptic(); showToast("Copied"); } catch { showToast("Couldn't copy"); }
+            break;
+          case "reply":
+            closeMenu();
+            startReply(entry.m);
+            break;
+          case "react":
+            showEmojiPicker();
+            break;
+        }
+      });
+
+      menu.addEventListener("keydown", (event) => {
+        const items = [...menu.querySelectorAll("button")].filter((b) => !b.closest("[hidden]"));
+        const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
+        if (!step || !items.length) return;
+        event.preventDefault();
+        items[(items.indexOf(document.activeElement) + step + items.length) % items.length].focus();
+      });
+
+      menuBack.addEventListener("click", () => { if (Date.now() - menuOpenedAt > 350) closeMenu(); });
+      menuBack.addEventListener("contextmenu", (event) => { event.preventDefault(); closeMenu(); });
+      document.addEventListener("keydown", (event) => { if (event.key === "Escape" && menuFor) { event.preventDefault(); closeMenu(); } });
+      listEl.addEventListener("scroll", () => { if (menuFor) placeMenu(menuFor); }, { passive: true }); // follows the message, closes if it leaves
+      window.addEventListener("resize", closeMenu);
+
+      // Things in a message that do their own thing when tapped
+      const ownTap = "[data-dm-target], .react-chip";
+      const entryOf = (node) => {
+        const row = node.closest && node.closest(".msg");
+        return row ? entries.get(Number(row.dataset.id)) : null;
+      };
+
+      listEl.addEventListener("click", (event) => {
+        if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopPropagation(); return; } // the finger lifting after a long-press
+        const chip = event.target.closest(".react-chip");
+        if (chip) {
+          const entry = entryOf(chip);
+          if (entry) sendReaction(entry.m.id, chip.dataset.emoji);
+          return;
+        }
+        const quote = event.target.closest(".quote");
+        if (quote) jumpToMessage(Number(quote.dataset.replyId));
+      }, true);
+
+      // Right-click on a computer (and long-press on Android, which sends the same event)
+      listEl.addEventListener("contextmenu", (event) => {
+        const entry = entryOf(event.target);
+        if (!entry || event.target.closest(ownTap)) return;
+        const selection = getSelection();
+        if (selection && !selection.isCollapsed && entry.bubble.contains(selection.anchorNode)) return; // they selected words: keep the browser's own menu
+        event.preventDefault();
+        if (menuFor === entry) return; // the long-press timer below got there first
+        openMenu(entry, coarseMQ.matches);
+      });
+
+      // ---- Touch: hold for the menu, drag right to reply
+      const SWIPE_TRIGGER = 56; // px of finger travel that arms the reply
+      const LONG_PRESS_MS = 420;
+      const MOVE_SLOP = 10;     // wobble that still counts as holding still
+      let touch = null;         // { entry, el, x0, y0, edge, mode: "pending" | "swipe" | "menu", timer, armed, icon }
+
+      listEl.addEventListener("touchstart", (event) => {
+        cancelTouch();
+        if (event.touches.length !== 1 || menuFor) return;
+        const entry = entryOf(event.target);
+        if (!entry || event.target.closest(ownTap)) return;
+        const point = event.touches[0];
+        touch = { entry, el: entry.el, x0: point.clientX, y0: point.clientY, edge: point.clientX <= EDGE_PX, mode: "pending", armed: false, icon: null, timer: 0 };
+        const mine = touch;
+        mine.timer = setTimeout(() => {
+          if (touch !== mine || mine.mode !== "pending") return;
+          mine.mode = "menu";
+          suppressClickUntil = Date.now() + 700;
+          haptic();
+          openMenu(mine.entry, true);
+        }, LONG_PRESS_MS);
+      }, { passive: true });
+
+      listEl.addEventListener("touchmove", (event) => {
+        if (!touch || event.touches.length !== 1) return;
+        const point = event.touches[0];
+        const dx = point.clientX - touch.x0, dy = point.clientY - touch.y0;
+        if (touch.mode === "pending") {
+          if (Math.abs(dx) < MOVE_SLOP && Math.abs(dy) < MOVE_SLOP) return;
+          clearTimeout(touch.timer);
+          // Scrolling, a drag to the left, or the screen edge (that belongs to swipe-back): not ours
+          if (touch.edge || dx <= 0 || Math.abs(dy) > Math.abs(dx)) { touch = null; return; }
+          beginSwipe(touch);
+        }
+        if (touch.mode === "swipe") dragSwipe(touch, dx);
+      }, { passive: true });
+
+      function beginSwipe(t) {
+        t.mode = "swipe";
+        t.icon = document.createElement("span");
+        t.icon.className = "swipe-reply";
+        t.icon.innerHTML = ICON_REPLY;
+        t.el.append(t.icon);
+        t.el.style.transition = "none";
+        t.el.style.willChange = "transform";
+      }
+
+      // Follows the finger, then resists past the trigger point so it feels like a spring
+      function dragSwipe(t, dx) {
+        const travel = dx <= SWIPE_TRIGGER ? Math.max(0, dx) : SWIPE_TRIGGER + Math.min(24, (dx - SWIPE_TRIGGER) * 0.25);
+        const progress = Math.min(1, travel / SWIPE_TRIGGER);
+        t.el.style.transform = `translateX(${travel}px)`;
+        t.icon.style.opacity = progress;
+        t.icon.style.transform = `scale(${0.6 + 0.4 * progress})`;
+        const armed = dx >= SWIPE_TRIGGER;
+        if (armed !== t.armed) {
+          t.armed = armed;
+          t.icon.classList.toggle("armed", armed);
+          if (armed) haptic();
+        }
+      }
+
+      function settleSwipe(t) {
+        const done = () => {
+          t.el.style.transition = t.el.style.transform = t.el.style.willChange = "";
+          t.icon.remove();
+        };
+        if (reduceMQ.matches) { done(); return; }
+        t.el.style.transition = "transform 0.22s cubic-bezier(0.22, 0.9, 0.3, 1)";
+        t.icon.style.transition = "opacity 0.15s ease, transform 0.22s ease";
+        t.el.style.transform = "";
+        t.icon.style.opacity = 0;
+        setTimeout(done, 260);
+      }
+
+      function endTouch() {
+        const t = touch;
+        if (!t) return;
+        touch = null;
+        clearTimeout(t.timer);
+        if (t.mode === "swipe") {
+          settleSwipe(t);
+          if (t.armed) startReply(t.entry.m);
+        }
+      }
+
+      function cancelTouch() {
+        const t = touch;
+        if (!t) return;
+        touch = null;
+        clearTimeout(t.timer);
+        if (t.mode === "swipe") settleSwipe(t); // the browser took the gesture (a scroll): spring back, no reply
+      }
+
+      listEl.addEventListener("touchend", endTouch);
+      listEl.addEventListener("touchcancel", cancelTouch);
 
       // ---- Who else is typing --------------------------------------------
       // Someone stays "typing" until they stop, send their message, or we hear nothing from them for a
@@ -2204,6 +2690,8 @@
       }
 
       function clearMessages() {
+        closeMenu();
+        entries.clear();
         listEl.querySelectorAll(".msg, .stamp").forEach((el) => el.remove());
         lastMsg = null;
         emptyEl.hidden = false;
@@ -2221,6 +2709,8 @@
         emptyNote.hidden = !justCreated;
         justCreated = false;
         messages.forEach((m) => renderMessage(m, true));
+        // A half-made reply only survives reconnecting to the same conversation, and only if its message is still there
+        if (replyTarget && (replyTarget.convo !== convoKey() || !entries.has(replyTarget.id))) clearReply();
       }
 
       let noticeTimer;
@@ -2674,6 +3164,7 @@
         dropPush(); // before disconnect(), while the socket can still say so
         disconnect();
         clearMessages();
+        clearReply();
         session.clearPasswords();
         if (dlg.open) dlg.close();
         if (roomInfoDlg.open) roomInfoDlg.close();
@@ -2720,6 +3211,9 @@
               if (data.message.cid !== myKey) onIncoming(data.message);
               if (convoType === "dm") loadDMs(); // refresh the preview, order and unread state
               else if (!roomList.some((r) => r.name === room)) rememberRoom(); // the room now has something in it
+              break;
+            case "reactions":
+              if (Number.isSafeInteger(data.id)) applyReactions(data.id, data.reactions);
               break;
             case "typing":
               if (typeof data.cid === "string" && typeof data.name === "string" && data.cid !== myKey) {
@@ -2982,7 +3476,10 @@
           notify("Not connected yet. Your message is still in the box.");
           return;
         }
-        ws.send(JSON.stringify({ type: "message", text })); // the server adds who it's from
+        const payload = { type: "message", text }; // the server adds who it's from
+        if (replyTarget && replyTarget.convo === convoKey() && entries.has(replyTarget.id)) payload.replyTo = replyTarget.id;
+        ws.send(JSON.stringify(payload));
+        clearReply();
         resetMyTyping(); // the server ends "typing" itself when it gets the message
         textEl.value = "";
         textEl.style.height = "auto";
