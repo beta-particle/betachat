@@ -276,6 +276,19 @@ function reactionsFor(sql, id) {
   return out;
 }
 
+// Deleting is for your own messages only: "yours" is the account logged in on this socket, whatever the
+// client claims. Replies keep a short copy of the text they answered, so those copies are emptied too:
+// a deleted message must not live on in somebody else's quote.
+function deleteOwnMessage(sql, meta, id) {
+  if (!Number.isSafeInteger(id)) return false;
+  const row = sql.exec("SELECT cid FROM messages WHERE id = ?", id).toArray()[0];
+  if (!row || row.cid !== meta.key) return false;
+  sql.exec("DELETE FROM reactions WHERE msg_id = ?", id);
+  sql.exec("DELETE FROM messages WHERE id = ?", id);
+  sql.exec("UPDATE messages SET reply_text = '' WHERE reply_id = ?", id);
+  return true;
+}
+
 // The last `limit` messages, oldest first, each with its reactions: what someone gets when they join
 function recentMessages(sql, limit) {
   const rows = sql
@@ -790,6 +803,21 @@ export class UserDirectory extends DurableObject {
     this.markRead(keyA, keyB, senderKey, ts);
   }
 
+  // A DMRoom calls this after its newest message was deleted: the list preview falls back to the message
+  // before it (or to nothing). Because the preview's time and sender change with it, "unread" is simply
+  // worked out again from the new newest message.
+  refreshConversationPreview(keyA, keyB, latest) {
+    const { pair } = this.pairOf(keyA, keyB);
+    if (!latest) {
+      this.sql.exec("UPDATE dm_pairs SET last_text = '' WHERE pair = ?", pair);
+      return;
+    }
+    this.sql.exec(
+      "UPDATE dm_pairs SET last_text = ?, last_ts = ?, last_sender = ? WHERE pair = ?",
+      String(latest.text), Number(latest.ts), String(latest.sender), pair
+    );
+  }
+
   // `ts` only ever moves a person's read marker forward, so a "read" notice that arrives out of order
   // (a slow request racing a newer message) can't rewind it and make something unread again.
   markRead(keyA, keyB, readerKey, ts) {
@@ -984,6 +1012,8 @@ export class ChatRoom extends DurableObject {
         return this.postMessage(ws, meta, data);
       case "react":
         return this.react(ws, meta, data);
+      case "delete_message":
+        return this.deleteMessage(ws, meta, data);
       case "set_password":
         return this.setPassword(ws, meta, data.password);
       case "remove_password":
@@ -1085,6 +1115,14 @@ export class ChatRoom extends DurableObject {
     ws.serializeAttachment({ ...meta, lastReact: now });
     const reactions = toggleReaction(this.sql, meta, data.id, data.emoji);
     if (reactions) this.broadcast({ type: "reactions", id: data.id, reactions });
+  }
+
+  // Remove one of your own messages for everyone in the room
+  deleteMessage(ws, meta, data) {
+    const now = Date.now();
+    if (meta.lastDelete && now - meta.lastDelete < REACT_GAP_MS) return;
+    ws.serializeAttachment({ ...meta, lastDelete: now });
+    if (deleteOwnMessage(this.sql, meta, data.id)) this.broadcast({ type: "message_deleted", id: data.id });
   }
 
   // ---- Notifications for people who are away --------------------------------
@@ -1523,6 +1561,8 @@ export class DMRoom extends DurableObject {
         return this.postMessage(ws, meta, data);
       case "react":
         return this.react(ws, meta, data);
+      case "delete_message":
+        return this.deleteMessage(ws, meta, data);
       case "avatar_updated":
         return this.avatarUpdated(ws, meta);
       case "typing":
@@ -1656,6 +1696,27 @@ export class DMRoom extends DurableObject {
     ws.serializeAttachment({ ...meta, lastReact: now });
     const reactions = toggleReaction(this.sql, meta, data.id, data.emoji);
     if (reactions) this.broadcast({ type: "reactions", id: data.id, reactions });
+  }
+
+  // Remove one of your own messages for both people. If it was the newest one, the conversation list's
+  // preview (kept by the user directory) moves back to the message before it so the deleted text isn't left there.
+  async deleteMessage(ws, meta, data) {
+    const now = Date.now();
+    if (meta.lastDelete && now - meta.lastDelete < REACT_GAP_MS) return;
+    ws.serializeAttachment({ ...meta, lastDelete: now });
+    const newest = this.sql.exec("SELECT id FROM messages ORDER BY id DESC LIMIT 1").toArray()[0];
+    const wasNewest = !!newest && newest.id === data.id;
+    if (!deleteOwnMessage(this.sql, meta, data.id)) return;
+    this.broadcast({ type: "message_deleted", id: data.id });
+    if (!wasNewest) return;
+    const latest = this.sql.exec("SELECT cid, text, ts FROM messages ORDER BY id DESC LIMIT 1").toArray()[0] || null;
+    try {
+      await this.env.USERS.get(this.env.USERS.idFromName("global")).refreshConversationPreview(
+        meta.key,
+        meta.peerKey,
+        latest ? { sender: latest.cid, text: latest.text, ts: latest.ts } : null
+      );
+    } catch {}
   }
 
   async pushSubscribe(ws, meta, input) {
