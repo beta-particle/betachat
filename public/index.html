@@ -60,22 +60,24 @@
     *, *::before, *::after { box-sizing: border-box; }
     [hidden] { display: none !important; }
 
-    /* Screen transitions: a small slide-and-fade as each screen (auth, a tab, or chat) is
-       unhidden. [hidden] toggling already takes them to/from display:none, and an element's CSS
-       animation restarts on its own whenever that happens — so this needs no JS beyond picking a
-       direction. --enter-x flips sign for "back" navigation (see .dir-back below). Skipped
-       entirely for anyone who'd rather not see motion. */
-    @media (prefers-reduced-motion: no-preference) {
-      .join, .tab-screen, .chat {
-        animation: screen-in 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
-      }
-      .join.dir-back, .tab-screen.dir-back, .chat.dir-back {
-        --enter-x: -14px;
-      }
+    /* Screen transitions. On a phone they are driven from JS (see "Views" below): the screen that
+       is moving sits on top as an absolutely-positioned layer while the one underneath stays put
+       (or drifts a little, iOS-style). A screen that has just been hidden gets .leaving so it stays
+       painted until its exit animation is done. Wide screens keep a small fade. */
+    .app { position: relative; }
+    @media (min-width: 800px) and (prefers-reduced-motion: no-preference) {
+      .join, .tab-screen, .chat { animation: screen-in 0.2s ease-out; }
     }
     @keyframes screen-in {
-      from { opacity: 0; transform: translateX(var(--enter-x, 14px)); }
-      to { opacity: 1; transform: translateX(0); }
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: none; }
+    }
+    @media (max-width: 799px) {
+      .app { overflow: hidden; }
+      .leaving[hidden] { display: flex !important; pointer-events: none; }
+      .layer-top, .layer-mid { position: absolute !important; left: 0; right: 0; top: 0; bottom: 0; will-change: transform; }
+      .layer-top { z-index: 6; box-shadow: -12px 0 32px rgb(0 0 0 / 0.16); }
+      .layer-mid { z-index: 3; }
     }
 
     /* Lock the page itself so betachat behaves like an app shell: every scrollbar you see
@@ -123,7 +125,7 @@
       cursor: pointer;
       transition: filter 0.12s ease, transform 0.12s ease;
     }
-    .btn:hover { filter: brightness(1.06); }
+    @media (hover: hover) { .btn:hover { filter: brightness(1.06); } }
     .btn:active { transform: translateY(1px); }
     .btn:disabled { opacity: 0.55; cursor: default; filter: none; transform: none; }
     .btn.danger { background: var(--danger); color: var(--danger-ink); }
@@ -139,7 +141,7 @@
       border-radius: 6px;
       cursor: pointer;
     }
-    .link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+    @media (hover: hover) { .link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
 
     input, textarea {
       border: 1px solid var(--line);
@@ -217,7 +219,7 @@
       cursor: pointer;
       transition: background 0.12s ease;
     }
-    .room:hover { background: var(--bg); }
+    @media (hover: hover) { .room:hover { background: var(--bg); } }
     .room[aria-current="true"] { background: var(--mine); color: var(--mine-ink); }
     .room-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .room svg { flex: none; opacity: 0.75; }
@@ -264,7 +266,7 @@
       cursor: pointer;
       transition: background 0.12s ease, border-color 0.12s ease;
     }
-    .rail-new:hover { background: var(--surface); border-color: var(--mine); }
+    @media (hover: hover) { .rail-new:hover { background: var(--surface); border-color: var(--mine); } }
 
     /* Section tabs: Rooms / Messages / Account. On a wide screen these live at the top of the
        sidebar and swap which list it shows below; on a phone they're a bottom bar and swap the
@@ -288,7 +290,7 @@
       cursor: pointer;
       transition: background 0.12s ease, color 0.12s ease;
     }
-    .rail-tab:hover { background: var(--bg); }
+    @media (hover: hover) { .rail-tab:hover { background: var(--bg); } }
     .rail-tab[aria-current="true"] { background: var(--surface); color: var(--mine); box-shadow: var(--shadow-sm); }
     .rail-account-panel .hint { margin: 0; padding: 0 0.2rem; }
     .rail-section .rail-new { flex: none; margin-top: 0.6rem; }
@@ -351,7 +353,7 @@
       color: var(--muted);
       cursor: pointer;
     }
-    .tab-back:hover { color: var(--ink); }
+    @media (hover: hover) { .tab-back:hover { color: var(--ink); } }
 
     /* The join / message forms, each now on its own screen instead of stacked together */
     .join-card h2 { margin: 0 0 0.25rem; font-size: 1.05rem; letter-spacing: -0.01em; }
@@ -398,8 +400,11 @@
 
     /* Names and avatars in the message list that can be clicked to start a direct message */
     [data-dm-target] { cursor: pointer; border-radius: 6px; }
-    .who[data-dm-target]:hover, .who[data-dm-target]:focus-visible { text-decoration: underline; }
-    .msg-avatar [data-dm-target]:hover { filter: brightness(1.1); }
+    .who[data-dm-target]:focus-visible { text-decoration: underline; }
+    @media (hover: hover) {
+      .who[data-dm-target]:hover { text-decoration: underline; }
+      .msg-avatar [data-dm-target]:hover { filter: brightness(1.1); }
+    }
 
     /* Chat screen */
     .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
@@ -438,7 +443,8 @@
       cursor: pointer;
       border-radius: 0.5rem;
     }
-    .chat-back:hover, .chat-back:focus-visible { color: var(--ink); background: var(--bg); }
+    .chat-back:focus-visible { color: var(--ink); background: var(--bg); }
+    @media (hover: hover) { .chat-back:hover { color: var(--ink); background: var(--bg); } }
     /* Everything else about the room - name, privacy, who's online - lives behind one tap here,
        instead of a row of separate links competing for width on a phone. */
     .chat-head-main {
@@ -454,7 +460,8 @@
       cursor: pointer;
       border-radius: 0.5rem;
     }
-    .chat-head-main:hover, .chat-head-main:focus-visible { background: var(--bg); }
+    .chat-head-main:focus-visible { background: var(--bg); }
+    @media (hover: hover) { .chat-head-main:hover { background: var(--bg); } }
     .title-row { display: flex; align-items: center; flex-wrap: nowrap; gap: 0.2rem 0.6rem; min-width: 0; }
     .chat-head h1 {
       margin: 0;
@@ -493,10 +500,6 @@
     .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--muted); flex: none; }
     .status[data-state="open"] .dot { background: var(--online); }
     .status[data-state="connecting"] .dot { background: var(--accent); }
-    /* The relocated actions now live inside the #room-info dialog, stacked and full-width
-       instead of squeezed into the header row. */
-    #room-info .row { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
-    #room-info .row .link { padding: 0.5rem 0.15rem; }
 
     /* "Add to Home Screen" tip for iPhone and iPad, where notifications only work for an installed app */
     .install-tip {
@@ -754,7 +757,7 @@
         gap: 0.8rem; min-height: 4.5rem; padding: 0.55rem 0.4rem; border: 0; border-radius: 0;
         border-bottom: 1px solid var(--line); background: none; font-size: 1.05rem;
       }
-      .my-rooms .room:hover, .my-dms .room:hover { background: var(--surface-2); }
+      @media (hover: hover) { .my-rooms .room:hover, .my-dms .room:hover { background: var(--surface-2); } }
       .my-rooms .room[aria-current="true"], .my-dms .room[aria-current="true"] { background: var(--surface-2); color: var(--ink); }
       .my-rooms .room-name, .my-dms .room-name { font-weight: 600; }
       .room.dm .avatar { --size: 3.1rem; flex: none; }
@@ -789,9 +792,7 @@
       /* Dialogs become bottom sheets */
       dialog { width: 100%; max-width: none; margin: auto 0 0; border-width: 1px 0 0; border-radius: 1.6rem 1.6rem 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
       .dlg::before { content: ""; display: block; width: 2.5rem; height: 0.3rem; margin: -0.5rem auto 1rem; border-radius: 0.2rem; background: var(--line); }
-      #room-info .row { gap: 0; margin-top: 0.5rem; }
-      #room-info .row .link { width: 100%; min-height: 3.4rem; padding: 0 0.25rem; border-bottom: 1px solid var(--line); border-radius: 0; font-size: 1.05rem; text-align: left; color: var(--ink); }
-      #room-info .close, #settings .close { width: 100%; min-height: 3.1rem; margin-top: 1rem; border-radius: 1rem; background: var(--bubble-in); color: var(--ink); text-align: center; }
+      #settings .close { width: 100%; min-height: 3.1rem; margin-top: 1rem; border-radius: 1rem; background: var(--bubble-in); color: var(--ink); text-align: center; }
 
       /* Sign-in: more air, bigger fields */
       .join form h1 { font-size: 2.1rem; }
@@ -841,7 +842,7 @@
         background: var(--bubble-in); color: var(--mine);
       }
       .my-rooms .room[aria-current="true"], .my-dms .room[aria-current="true"] { background: none; border-bottom-color: var(--line); color: var(--ink); }
-      .my-rooms .room:hover, .my-dms .room:hover { background: none; }
+      @media (hover: hover) { .my-rooms .room:hover, .my-dms .room:hover { background: none; } }
       .account-card { align-items: center; padding-bottom: 0.5rem; }
       .set-list { margin: 0; border-radius: 1rem; }
     }
@@ -864,20 +865,7 @@
       .field-prefix input { min-height: 3rem; }
       .join-card .btn { min-height: 3.25rem; margin-top: 1.4rem; border-radius: 1rem; font-size: 1.05rem; }
       .join-card .hint { font-size: 0.82rem; }
-      /* Room info sheet: icon-chip rows */
       .dlg h2 { font-size: 1.4rem; margin-bottom: 0.4rem; }
-      #room-info .row .link { display: flex; align-items: center; gap: 0.75rem; }
-      #room-info .row .link::before { content: ""; flex: none; width: 2rem; height: 2rem; border-radius: 0.6rem; background: var(--bubble-in) center / 18px no-repeat; }
-      #room-info .row #settings-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1'/%3E%3C/svg%3E"); }
-      #room-info .row .profile-open::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4 3.6-6 8-6s8 2 8 6'/%3E%3C/svg%3E"); }
-      #room-info .row #copy::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1'/%3E%3C/svg%3E"); }
-      #room-info .row #alerts-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314504a' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E"); }
-      @media (prefers-color-scheme: dark) {
-        #room-info .row #settings-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1'/%3E%3C/svg%3E"); }
-        #room-info .row .profile-open::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 20c0-4 3.6-6 8-6s8 2 8 6'/%3E%3C/svg%3E"); }
-        #room-info .row #copy::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1'/%3E%3C/svg%3E"); }
-        #room-info .row #alerts-btn::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd9cb' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E"); }
-      }
     }
     /* ---- Sign-in, profile picture and room settings: match the artboards ---- */
     .auth-wordmark { display: none; }
@@ -904,6 +892,73 @@
       .dlg hr { margin: 1.25rem 0 1rem; }
       .profile-preview { margin: 1.25rem 0 0.75rem; }
       .profile-pic .row { margin-top: 0.5rem; }
+    }
+
+    /* ---- Bottom sheets (phone): full-screen dialog shell, own dim layer, animated + draggable ---- */
+    .sheet-dim { display: none; }
+    .dlg:focus { outline: 0; }
+    @media (max-width: 799px) {
+      dialog { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: hidden; }
+      dialog[open] { display: flex; flex-direction: column; justify-content: flex-end; }
+      dialog::backdrop { background: transparent; backdrop-filter: none; }
+      .sheet-dim { display: block; position: absolute; inset: 0; background: rgb(10 16 13 / 0.5); }
+      dialog > .dlg {
+        position: relative; z-index: 1; max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain;
+        background: var(--surface); border-top: 1px solid var(--line); border-radius: 1.6rem 1.6rem 0 0;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); box-shadow: var(--shadow-lg); will-change: transform;
+      }
+    }
+
+    /* ---- Room info sheet ---- */
+    .ri-head { display: flex; align-items: center; gap: 0.85rem; margin: 0 0 1.1rem; }
+    .ri-tile { flex: none; width: 3.25rem; height: 3.25rem; display: flex; align-items: center; justify-content: center; border-radius: 1rem; background: hsl(170 38% 34%); color: #fff; overflow: hidden; }
+    .ri-tile .avatar { --size: 3.25rem; }
+    .ri-text { flex: 1; min-width: 0; }
+    .ri-text h2 { margin: 0; font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ri-sub { margin: 0.1rem 0 0; font-size: 0.9rem; color: var(--muted); }
+    .ri-close { flex: none; min-height: 2.25rem; padding: 0 0.95rem; border: 0; border-radius: 999px; background: var(--bubble-in); color: var(--ink); font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .ri-list li + li { border-top: 0; }
+    .ri-list li:not([hidden]) ~ li:not([hidden]) { border-top: 1px solid var(--line); }
+    .set-row.static { cursor: default; }
+    .set-row .soon { margin-left: auto; }
+    .set-row .set-label { flex: 1; }
+    .tog { flex: none; position: relative; width: 2.6rem; height: 1.55rem; border-radius: 999px; background: var(--line); transition: background 0.2s ease; }
+    .tog::after { content: ""; position: absolute; top: 0.15rem; left: 0.15rem; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.3); transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1); }
+    [aria-pressed="true"] > .tog { background: var(--online); }
+    [aria-pressed="true"] > .tog::after { transform: translateX(1.05rem); }
+    #alerts-btn .soon { margin-left: auto; }
+
+    /* ---- Toast ---- */
+    .toast {
+      position: fixed; z-index: 100; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 0.6rem);
+      display: flex; align-items: center; gap: 0.5rem; width: max-content; max-width: min(92vw, 26rem); padding: 0.6rem 1.05rem;
+      border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink);
+      box-shadow: var(--shadow-md); font-size: 0.92rem; font-weight: 600; pointer-events: none;
+      opacity: 0; transform: translate(-50%, -150%);
+      transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast svg { flex: none; color: var(--mine); }
+    @media (prefers-reduced-motion: reduce) { .toast { transform: translate(-50%, 0); transition: opacity 0.15s ease; } }
+
+    /* ---- Pressed states (touch) ----
+       Hover is switched off where there is no hover (see the (hover: hover) wrappers above) so nothing
+       stays "stuck" after a tap. Instead: controls dim or shrink a touch while held, and list rows get
+       the grey highlight Messages uses. */
+    .btn, .link, .tab-back, .chat-back, .chat-head-main, .ri-close, .tabbar button, .rail-new, .avatar-badge, .set-row, .room { -webkit-user-select: none; user-select: none; }
+    .btn:not(:disabled):active { transform: scale(0.97); filter: brightness(0.94); }
+    .link:active, .tab-back:active, .chat-back:active, .ri-close:active { opacity: 0.5; }
+    .link, .tab-back, .chat-back, .ri-close { transition: opacity 0.15s ease; }
+    .chat-head-main:active { opacity: 0.55; }
+    .tabbar button:active { opacity: 0.55; }
+    .tab-screen-cta:active, .avatar-badge:active { transform: scale(0.92); }
+    .tab-screen-cta, .avatar-badge { transition: transform 0.15s ease; }
+    [data-dm-target]:active { opacity: 0.6; }
+    @media (max-width: 799px) {
+      .room, .set-row:not(.static) { transition: background-color 0.25s ease; }
+      .my-rooms .room:active, .my-dms .room:active, .set-row:not(.static):not(:disabled):active { background: rgb(60 80 72 / 0.14); transition-duration: 0s; }
+      .my-rooms .room[aria-current="true"]:active, .my-dms .room[aria-current="true"]:active { background: rgb(60 80 72 / 0.14); }
+      .link:active { text-decoration: none; }
     }
   </style>
 </head>
@@ -1147,7 +1202,8 @@
   </main>
 
   <dialog id="settings" aria-labelledby="settings-title">
-    <div class="dlg">
+    <div class="sheet-dim" aria-hidden="true"></div>
+    <div class="dlg" tabindex="-1" autofocus>
       <h2 id="settings-title">Room settings</h2>
 
       <form id="pw-form" novalidate>
@@ -1174,20 +1230,29 @@
   </dialog>
 
   <dialog id="room-info" aria-labelledby="room-info-title">
-    <div class="dlg">
-      <h2 id="room-info-title">Room info</h2>
-      <div class="row">
-        <button class="link" type="button" id="settings-btn" hidden>Room settings</button>
-        <button class="link profile-open" type="button">Profile</button>
-        <button class="link" type="button" id="copy">Copy invite link</button>
-        <button class="link" type="button" id="alerts-btn" aria-pressed="false">Alerts here: off</button>
-      </div>
-      <button class="link close" type="button" id="room-info-close">Close</button>
+    <div class="sheet-dim" aria-hidden="true"></div>
+    <div class="dlg" tabindex="-1" autofocus>
+      <header class="ri-head">
+        <span class="ri-tile" id="ri-tile" aria-hidden="true"></span>
+        <div class="ri-text">
+          <h2 id="room-info-title">Room info</h2>
+          <p class="ri-sub" id="ri-sub"></p>
+        </div>
+        <button class="ri-close" type="button" id="room-info-close">Close</button>
+      </header>
+      <ul class="set-list ri-list">
+        <li><div class="set-row static" id="ri-members"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.9c2.1.7 3.5 2.4 3.5 5.1"/></svg></span><span class="set-label">Members online</span><span class="soon" id="ri-online">—</span></div></li>
+        <li><button class="set-row" type="button" id="copy"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span><span class="set-label">Copy invite link</span></button></li>
+        <li><button class="set-row" type="button" id="share-btn"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></span><span class="set-label">Share…</span></button></li>
+        <li><button class="set-row" type="button" id="alerts-btn" aria-pressed="false"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><span class="set-label">Alerts</span><span class="soon" id="alerts-state">Off</span><span class="tog" aria-hidden="true"></span></button></li>
+        <li><button class="set-row" type="button" id="settings-btn"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></span><span class="set-label">Room settings</span><svg class="set-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></li>
+      </ul>
     </div>
   </dialog>
 
   <dialog id="profile" aria-labelledby="profile-title">
-    <div class="dlg profile-pic">
+    <div class="sheet-dim" aria-hidden="true"></div>
+    <div class="dlg profile-pic" tabindex="-1" autofocus>
       <h2 id="profile-title">Profile picture</h2>
       <p class="hint">Shown next to your messages in every room. Pictures are cropped to a square and shrunk to 256 pixels.</p>
 
@@ -1203,6 +1268,11 @@
     </div>
   </dialog>
 
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    <span id="toast-text"></span>
+  </div>
+
   <script>
     // Behave like an app, not a page: no pinch zoom, no double-tap zoom (iOS ignores user-scalable on its own).
     ["gesturestart", "gesturechange", "gestureend"].forEach((t) => document.addEventListener(t, (e) => e.preventDefault()));
@@ -1216,6 +1286,23 @@
     (() => {
       const $ = (sel) => document.querySelector(sel);
       const MIN_ROOM_PASSWORD = 6;
+
+      // Phone layout, touch input, and "please don't move" - all re-read live, never cached.
+      const phoneMQ = matchMedia("(max-width: 799px)");
+      const coarseMQ = matchMedia("(pointer: coarse)");
+      const reduceMQ = matchMedia("(prefers-reduced-motion: reduce)");
+      const EASE = "cubic-bezier(0.32, 0.72, 0, 1)"; // iOS-like: quick start, long soft landing
+
+      // Focus a field - except on a touch screen, where focusing pops the keyboard up before the
+      // person has asked to type. { force: true } is for the one place that should (Message someone).
+      function focusField(el, { force = false, select = false } = {}) {
+        if (coarseMQ.matches && !force) return;
+        el.focus();
+        if (select && el.select) el.select();
+      }
+
+      // Lets :active styles work in iOS Safari, which ignores them until some touch listener exists.
+      document.addEventListener("touchstart", () => {}, { passive: true });
 
       // ---- Helpers, storage ----------------------------------------------
       const cleanRoom = (value) =>
@@ -1332,6 +1419,64 @@
       function convoLabel() {
         return convoType === "dm" ? `your messages with ${peerName || peerKey}` : `#${room}`;
       }
+      const shortLabel = () => (convoType === "dm" ? peerName || peerKey : `#${room}`);
+
+      // ---- Toast: a small pill that drops in from the top and leaves by itself ----------------------
+      const toastEl = $("#toast"), toastText = $("#toast-text");
+      let toastTimer, toastGone;
+      function showToast(text, ms = 2400) {
+        // A modal dialog sits in the browser's top layer, above everything else, so while one is open
+        // the toast moves inside it (it is position: fixed, so it still lands at the top of the screen).
+        const host = document.querySelector("dialog[open]") || document.body;
+        if (toastEl.parentNode !== host) host.append(toastEl);
+        toastText.textContent = text;
+        clearTimeout(toastTimer);
+        clearTimeout(toastGone);
+        toastEl.hidden = false;
+        void toastEl.offsetWidth; // so the slide-in runs even if it was already showing
+        toastEl.classList.add("show");
+        toastTimer = setTimeout(() => {
+          toastEl.classList.remove("show");
+          toastGone = setTimeout(() => { toastEl.hidden = true; }, 450);
+        }, ms);
+      }
+
+      // A light tap, where the device offers one. Android has navigator.vibrate; iOS 17.4+ Safari ticks
+      // when a <input switch> is toggled from a tap, so a hidden one is clicked.
+      function haptic() {
+        try { if (navigator.vibrate && navigator.vibrate(10)) return; } catch {}
+        try {
+          const label = document.createElement("label");
+          label.setAttribute("aria-hidden", "true");
+          label.style.cssText = "position:fixed;left:-100px;top:0;opacity:0;pointer-events:none";
+          label.innerHTML = '<input type="checkbox" switch tabindex="-1">';
+          document.body.append(label);
+          label.click();
+          setTimeout(() => label.remove(), 100);
+        } catch {}
+      }
+
+      // ---- Room info sheet ---------------------------------------------------------------------------
+      // Everything here belongs to the conversation itself. (Your own profile lives on the Account tab.)
+      const riTile = $("#ri-tile"), riSub = $("#ri-sub"), riOnline = $("#ri-online"), shareBtn = $("#share-btn");
+      const rowOf = (btn) => btn.closest("li");
+      function renderRoomInfo() {
+        const dm = convoType === "dm";
+        const count = parseInt(onlineEl.textContent, 10);
+        const online = Number.isFinite(count) ? count : null;
+        $("#room-info-title").textContent = dm ? peerName || peerKey : `#${room}`;
+        riSub.textContent = [dm ? "Direct message" : isPrivate ? "Private" : "Public", online === null ? "" : `${online} online`]
+          .filter(Boolean).join(" · ");
+        riOnline.textContent = online === null ? "—" : String(online);
+        if (dm) {
+          riTile.replaceChildren(makeAvatar(peerKey, peerName || peerKey));
+        } else if (!riTile.firstElementChild || riTile.firstElementChild.tagName !== "svg") {
+          riTile.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>';
+        }
+        rowOf(copyBtn).hidden = dm;                   // an invite link only means something for a room
+        rowOf(shareBtn).hidden = dm || !navigator.share;
+        rowOf(settingsBtn).hidden = dm || !isOwner;   // the server checks ownership again anyway
+      }
 
       function applyRoom() {
         updateTitle();
@@ -1340,14 +1485,11 @@
         if (convoType === "dm") {
           roomTitle.textContent = peerName || peerKey;
           badgeEl.hidden = true;
-          settingsBtn.hidden = true;
-          copyBtn.hidden = true;
         } else {
           roomTitle.textContent = `#${room}`;
           badgeEl.hidden = !isPrivate;
-          settingsBtn.hidden = !isOwner;
-          copyBtn.hidden = false;
         }
+        renderRoomInfo();
         updateAlertsTitle();
         renderRooms();
         renderDMs();
@@ -1828,26 +1970,28 @@
       }
 
       function renderAlertsButton() {
-        alertsBtn.textContent = `Alerts here: ${alertsOn ? "on" : "off"}`;
+        $("#alerts-state").textContent = alertsOn ? "On" : "Off";
         alertsBtn.setAttribute("aria-pressed", String(alertsOn));
         updateAlertsTitle();
       }
 
       alertsBtn.addEventListener("click", async () => {
+        haptic();
         alertsOn = !alertsOn;
         try { localStorage.setItem("betachat:alerts", alertsOn ? "1" : "0"); } catch {}
         renderAlertsButton();
         renderRooms(); // the bell on the room list follows the same state (joined is defined by now)
         if (!alertsOn) {
           await dropPush();
-          notify(`Alerts are off for ${convoLabel()}. The unread count in the tab title stays on for everything.`, "info");
+          showToast(`Alerts off for ${shortLabel()}`);
           return;
         }
         await unlockAudio();
         beep(); // so you hear right away what it will sound like
         const outcome = await ensureSubscription(true);
         if (outcome === "push") registerPush();
-        notify(alertsSummary(outcome), "info", 8000);
+        // The full explanation is still on the button's tooltip; the toast just confirms what happened.
+        showToast(`Alerts on for ${shortLabel()}${outcome === "push" ? "" : " · only while open"}`);
         if (outcome === "needs-install") showInstallTip();
       });
       renderAlertsButton();
@@ -2082,7 +2226,7 @@
         statusEl.dataset.state = state;
         statusText.textContent =
           state === "open" ? "Connected" : state === "connecting" ? "Connecting…" : "Offline, retrying…";
-        if (state !== "open") onlineEl.textContent = "";
+        if (state !== "open") { onlineEl.textContent = ""; renderRoomInfo(); }
       }
 
       // ---- Views ---------------------------------------------------------
@@ -2090,25 +2234,73 @@
       // right tab in the bottom bar (phone) — "New room" still counts as the Rooms tab, and so on.
       const SCREEN_TAB = { rooms: "rooms", newRoom: "rooms", messages: "messages", newMessage: "messages", account: "account" };
 
-      // Left-to-right position of each screen, purely for picking a transition direction: moving
-      // to a higher number slides in from the right (drilling forward, e.g. Rooms -> New room),
-      // moving to a lower one slides in from the left (going back, or to an earlier tab).
-      const SCREEN_ORDER = { rooms: 0, newRoom: 1, messages: 2, newMessage: 3, account: 4, chat: 5 };
+      // How deep each screen sits. Going to a deeper one pushes it in from the right; going to a
+      // shallower one slides the current screen away to the right, revealing what is underneath.
+      // Screens at the same depth (the three tabs) slide sideways according to their position in the
+      // tab bar: a tab to the right comes in from the right, one to the left comes in from the left.
+      const NAV_DEPTH = { auth: 0, rooms: 0, messages: 0, account: 0, newRoom: 1, newMessage: 1, chat: 2 };
+      const TAB_INDEX = { rooms: 0, messages: 1, account: 2 };
+      const NAV_MS = 340;
       let currentScreen = null;
+      let activeNav = null; // { anims, cleanup } while a transition or an edge swipe is in flight
 
-      function show(name) {
-        const prev = currentScreen;
-        const el = views[name];
-        if (el && el.hidden) {
-          // Only set a direction when we actually know both ends of the move and it's a genuine
-          // screen change — re-showing the screen you're already on (e.g. to display an error)
-          // must not replay the animation or flip its direction.
-          if (prev && prev !== name && SCREEN_ORDER[name] !== undefined && SCREEN_ORDER[prev] !== undefined) {
-            el.classList.toggle("dir-back", SCREEN_ORDER[name] < SCREEN_ORDER[prev]);
-          } else {
-            el.classList.remove("dir-back");
-          }
+      // Settle whatever is moving right now (instantly) so the next change starts from a clean state.
+      function endNav() {
+        if (!activeNav) return;
+        const nav = activeNav;
+        activeNav = null;
+        nav.anims.forEach((a) => a.cancel());
+        nav.cleanup();
+      }
+
+      function navKind(prev, name) {
+        if (!prev || prev === name || prev === "auth" || name === "auth") return null;
+        const a = NAV_DEPTH[prev], b = NAV_DEPTH[name];
+        if (a === undefined || b === undefined) return null;
+        if (b > a) return "push";
+        if (b < a) return "pop";
+        const ta = TAB_INDEX[SCREEN_TAB[prev]], tb = TAB_INDEX[SCREEN_TAB[name]];
+        if (ta === undefined || tb === undefined || ta === tb) return null;
+        return tb > ta ? "tab-fwd" : "tab-back";
+      }
+
+      function runNav(kind, from, to, barWasHidden) {
+        const anims = [], undo = [];
+        const cls = (el, c) => { el.classList.add(c); undo.push(() => el.classList.remove(c)); };
+        const fly = (el, a, b) => anims.push(el.animate([{ transform: a }, { transform: b }], { duration: NAV_MS, easing: EASE, fill: "both" }));
+        // A tab bar that is on screen both before and after stays put under the moving layer.
+        if (kind === "push" && tabbar.hidden && !barWasHidden) { tabbar.hidden = false; undo.push(() => { tabbar.hidden = true; }); }
+        const inset = !barWasHidden && !tabbar.hidden ? tabbar.offsetHeight + "px" : "0px";
+        cls(from, "leaving");
+        const layer = (el, c) => { cls(el, c); el.style.bottom = inset; undo.push(() => { el.style.bottom = ""; }); };
+
+        if (kind === "push") {
+          layer(to, "layer-top");
+          fly(to, "translateX(100%)", "translateX(0)");
+          fly(from, "translateX(0)", "translateX(-28%)");
+        } else if (kind === "pop") {
+          layer(from, "layer-top");
+          fly(from, "translateX(0)", "translateX(100%)");
+          fly(to, "translateX(-28%)", "translateX(0)");
+        } else {
+          const dir = kind === "tab-fwd" ? 1 : -1;
+          layer(from, "layer-mid");
+          fly(to, `translateX(${100 * dir}%)`, "translateX(0)");
+          fly(from, "translateX(0)", `translateX(${-100 * dir}%)`);
         }
+        const nav = { anims, cleanup: () => undo.forEach((u) => u()) };
+        activeNav = nav;
+        anims[0].onfinish = () => { if (activeNav === nav) endNav(); };
+      }
+
+      function show(name, { animate = true } = {}) {
+        endNav();
+        const prev = currentScreen;
+        const next = views[name];
+        const from = prev ? views[prev] : null;
+        const kind = animate && phoneMQ.matches && !reduceMQ.matches && next.hidden && from && !from.hidden
+          ? navKind(prev, name) : null;
+        const barWasHidden = tabbar.hidden;
         for (const [key, el2] of Object.entries(views)) el2.hidden = key !== name;
         currentScreen = name;
         rail.hidden = name === "auth"; // (only wide screens ever show it)
@@ -2118,7 +2310,111 @@
         renderRooms();
         renderDMs();
         if (tab && myKey) loadDMs(); // any of these screens is exactly when a stale preview would show
+        if (kind) runNav(kind, from, next, barWasHidden);
       }
+
+      // ---- Edge swipe: drag from the left edge to go back --------------------------------------
+      // The screen follows the finger, the one it came from is revealed underneath (drifting in from
+      // the left a little, like iOS), and letting go either finishes the trip (far enough, or a flick)
+      // or springs back. Only on a phone, and only on screens that were pushed in.
+      const BACK_OF = { chat: () => (convoType === "dm" ? "messages" : "rooms"), newRoom: () => "rooms", newMessage: () => "messages" };
+      const EDGE_PX = 24;
+      let swipe = null;
+
+      document.addEventListener("touchstart", (e) => {
+        if (swipe || e.touches.length !== 1 || !phoneMQ.matches) return;
+        if (!BACK_OF[currentScreen] || document.querySelector("dialog[open]")) return;
+        const t = e.touches[0];
+        if (t.clientX > EDGE_PX) return;
+        swipe = { x0: t.clientX, y0: t.clientY, active: false, x: 0, samples: [{ x: t.clientX, t: e.timeStamp }], name: currentScreen };
+      }, { passive: true });
+
+      document.addEventListener("touchmove", (e) => {
+        if (!swipe) return;
+        const t = e.touches[0];
+        const dx = t.clientX - swipe.x0, dy = t.clientY - swipe.y0;
+        if (!swipe.active) {
+          if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; } // that's a scroll
+          if (dx < -10) { swipe = null; return; }
+          if (dx < 8) return;
+          startSwipe();
+        }
+        e.preventDefault();
+        swipe.samples.push({ x: t.clientX, t: e.timeStamp });
+        if (swipe.samples.length > 6) swipe.samples.shift();
+        moveSwipe(Math.max(0, dx));
+      }, { passive: false });
+
+      function startSwipe() {
+        endNav();
+        const g = swipe;
+        g.active = true;
+        g.W = window.innerWidth;
+        g.top = views[g.name];
+        g.underName = BACK_OF[g.name]();
+        g.under = views[g.underName];
+        g.barWasHidden = tabbar.hidden;
+        renderRooms();
+        renderDMs();
+        const undo = [];
+        const cls = (el, c) => { el.classList.add(c); undo.push(() => el.classList.remove(c)); };
+        tabbar.hidden = false;                       // the tab bar belongs to the screen being revealed
+        const inset = g.name === "chat" ? "0px" : tabbar.offsetHeight + "px";
+        g.under.hidden = false;
+        cls(g.top, "layer-top");
+        g.top.style.bottom = inset;
+        const finish = () => {
+          g.top.style.transform = g.under.style.transform = g.top.style.bottom = "";
+          undo.forEach((u) => u());
+        };
+        const abort = () => { // back to exactly how it was
+          finish();
+          g.under.hidden = true;
+          tabbar.hidden = g.barWasHidden;
+        };
+        g.finish = finish;
+        const nav = { anims: [], cleanup: () => { abort(); swipe = null; } };
+        activeNav = nav;
+        g.nav = nav;
+      }
+
+      function moveSwipe(x) {
+        const g = swipe;
+        g.x = x;
+        g.top.style.transform = `translateX(${x}px)`;
+        g.under.style.transform = `translateX(${-28 * (1 - Math.min(1, x / g.W))}%)`;
+      }
+
+      function endSwipe() {
+        const g = swipe;
+        if (!g) return;
+        if (!g.active) { swipe = null; return; }
+        swipe = null;
+        const first = g.samples[0], last = g.samples[g.samples.length - 1];
+        const v = last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0; // px per ms
+        const commit = g.x > g.W * 0.4 || (v > 0.45 && g.x > 12);
+        const to = commit ? g.W : 0;
+        const left = Math.abs(to - g.x);
+        const ms = reduceMQ.matches ? 0 : Math.max(120, Math.min(NAV_MS, (left / Math.max(0.6, Math.abs(v))) * 0.6));
+        const opts = { duration: ms, easing: EASE, fill: "both" };
+        const a1 = g.top.animate([{ transform: `translateX(${g.x}px)` }, { transform: `translateX(${to}px)` }], opts);
+        const a2 = g.under.animate(
+          [{ transform: `translateX(${-28 * (1 - Math.min(1, g.x / g.W))}%)` }, { transform: `translateX(${commit ? 0 : -28}%)` }], opts);
+        g.nav.anims = [a1, a2];
+        a1.onfinish = () => {
+          if (activeNav !== g.nav) return;
+          activeNav = null;
+          a1.cancel(); a2.cancel();
+          if (commit) {
+            g.finish();
+            show(g.underName, { animate: false }); // the same destination as the Back button
+          } else {
+            g.nav.cleanup();
+          }
+        };
+      }
+      document.addEventListener("touchend", endSwipe);
+      document.addEventListener("touchcancel", endSwipe);
 
       // The sidebar's own Rooms / Messages / Account tabs. On a wide screen the main pane sits right
       // next to this, so switching tabs should change what it shows too - otherwise it looks stuck
@@ -2180,7 +2476,7 @@
         authError.dataset.kind = "";
         authError.textContent = message;
         authBtn.disabled = false;
-        authUser.focus();
+        focusField(authUser);
       }
 
       // The "New room" screen, reused both for a fresh attempt and for showing an error on the
@@ -2192,8 +2488,7 @@
         joinError.textContent = message;
         joinBtn.disabled = false;
         joinBtn.textContent = "Join room";
-        focusEl.focus();
-        if (focusEl.type === "text") focusEl.select();
+        focusField(focusEl, { select: focusEl.type === "text" });
       }
 
       // The "+ New room" button (sidebar or the Rooms screen): a genuinely blank form
@@ -2208,7 +2503,9 @@
         show("newMessage");
         dmError.textContent = message;
         if (dmBtn) { dmBtn.disabled = false; dmBtn.textContent = "Message"; }
-        focusEl.focus();
+        // "Message someone" is the one screen whose whole job is typing a name, so here (and only here)
+        // the keyboard is allowed to come up by itself, even on a phone.
+        focusField(focusEl, { force: true });
       }
 
       // The "+ New message" button (sidebar or the Messages screen): a blank form
@@ -2220,7 +2517,7 @@
       function showChat() {
         if (!views.chat.hidden) return;
         show("chat");
-        textEl.focus();
+        focusField(textEl);
       }
 
       // ---- WebSocket with auto-reconnect ---------------------------------
@@ -2273,7 +2570,7 @@
         if (awaitingJoin) {
           awaitingJoin = false;
           showChat();
-          if (rail.contains(document.activeElement)) textEl.focus(); // picked from the sidebar: type next
+          if (rail.contains(document.activeElement)) focusField(textEl); // picked from the sidebar: type next
         }
       }
 
@@ -2408,7 +2705,7 @@
                 setTyping(data.cid, data.name, data.typing === true);
               }
               break;
-            case "presence": onlineEl.textContent = `${data.count} online`; break;
+            case "presence": onlineEl.textContent = `${data.count} online`; renderRoomInfo(); break;
             case "error": notify(data.message); break;
             case "room_updated": onRoomUpdated(data); break;
             case "settings_error": onSettingsError(data); break;
@@ -2472,7 +2769,7 @@
 
       authSwitch.addEventListener("click", () => {
         setAuthMode(!registering);
-        authUser.focus();
+        focusField(authUser);
       });
 
       authForm.addEventListener("submit", async (event) => {
@@ -2631,7 +2928,7 @@
 
       // Tapping the room name/status opens the info dialog, which holds the settings/profile/
       // invite/alerts actions that used to be crammed into the header row (WhatsApp-style).
-      roomInfoOpen.addEventListener("click", () => roomInfoDlg.showModal());
+      roomInfoOpen.addEventListener("click", () => { renderRoomInfo(); openSheet(roomInfoDlg); });
       $("#room-info-close").addEventListener("click", () => roomInfoDlg.close());
 
       // The sidebar's and the Messages screen's own "+ New message" buttons: the New message form
@@ -2640,15 +2937,20 @@
       $("#new-message-back").addEventListener("click", showMessagesTab);
 
       const copyBtn = $("#copy");
+      const inviteLink = () => `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
       copyBtn.addEventListener("click", async () => {
-        const link = `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
         try {
-          await navigator.clipboard.writeText(link);
-          copyBtn.textContent = isPrivate ? "Link copied (no password)" : "Link copied";
+          await navigator.clipboard.writeText(inviteLink());
+          haptic();
+          showToast(isPrivate ? "Link copied (no password)" : "Link copied");
         } catch {
-          copyBtn.textContent = "Copy failed";
+          showToast("Couldn't copy the link");
         }
-        setTimeout(() => (copyBtn.textContent = "Copy invite link"), 2500);
+      });
+      shareBtn.addEventListener("click", async () => {
+        try {
+          await navigator.share({ title: `#${room} on betachat`, text: `Join #${room} on betachat`, url: inviteLink() });
+        } catch {} // closing the share sheet counts as an AbortError, which is fine
       });
 
       $("#composer").addEventListener("submit", (event) => {
@@ -2712,6 +3014,115 @@
         typingPauseTimer = setTimeout(stopMyTyping, TYPING_PAUSE_MS);
       });
 
+      // ---- Bottom sheets ---------------------------------------------------------------------------
+      // The three <dialog>s are sheets on a phone: they slide up, slide down on close, close when the dim
+      // area is tapped, and can be dragged down by the handle or the sheet (pulling up resists, like a
+      // rubber band; the dim fades as the sheet leaves). On wide screens they stay ordinary centred dialogs.
+      const nativeClose = HTMLDialogElement.prototype.close;
+      const sheets = [roomInfoDlg, dlg, profileDlg];
+      const sheetParts = (d) => ({ panel: d.querySelector(".dlg"), dim: d.querySelector(".sheet-dim") });
+      const sheetClosing = new WeakSet();
+      const SHEET_MS = 320;
+
+      function resetSheet(d) {
+        const { panel, dim } = sheetParts(d);
+        panel.getAnimations().forEach((a) => a.cancel());
+        dim.getAnimations().forEach((a) => a.cancel());
+        panel.style.transform = "";
+        dim.style.opacity = "";
+        sheetClosing.delete(d);
+      }
+
+      function openSheet(d) {
+        if (d.open) return;
+        d.showModal();
+        // showModal() focuses the first control it finds; on a touch screen that would raise the keyboard.
+        if (coarseMQ.matches && d.contains(document.activeElement) && document.activeElement !== d.querySelector(".dlg")) {
+          document.activeElement.blur();
+        }
+        if (!phoneMQ.matches || reduceMQ.matches) return;
+        const { panel, dim } = sheetParts(d);
+        panel.animate([{ transform: "translateY(100%)" }, { transform: "translateY(0)" }], { duration: SHEET_MS, easing: EASE });
+        dim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SHEET_MS, easing: "ease-out" });
+      }
+
+      function closeNow(d) {
+        if (!d.open) return;
+        nativeClose.call(d);
+        resetSheet(d);
+      }
+
+      function closeSheet(d, fromY = 0, fromDim = 1) {
+        if (!d.open || sheetClosing.has(d)) return;
+        if (!phoneMQ.matches || reduceMQ.matches) { closeNow(d); return; }
+        sheetClosing.add(d);
+        const { panel, dim } = sheetParts(d);
+        const h = panel.offsetHeight;
+        const ms = Math.max(140, 260 * (1 - fromY / (h || 1)));
+        panel.style.transform = dim.style.opacity = "";
+        const a = panel.animate([{ transform: `translateY(${fromY}px)` }, { transform: `translateY(${h}px)` }], { duration: ms, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" });
+        dim.animate([{ opacity: fromDim }, { opacity: 0 }], { duration: ms, easing: "linear", fill: "forwards" });
+        a.onfinish = () => closeNow(d);
+      }
+
+      // Every existing dlg.close() call (and Escape, and the Close buttons) now goes through the animation.
+      sheets.forEach((d) => {
+        d.close = () => closeSheet(d);
+        d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
+        d.addEventListener("click", (e) => { // the dim area (or, on wide screens, the backdrop)
+          if (e.target === d || e.target.classList.contains("sheet-dim")) closeSheet(d);
+        });
+        d.addEventListener("close", () => resetSheet(d));
+
+        let drag = null;
+        d.addEventListener("touchstart", (e) => {
+          if (!phoneMQ.matches || e.touches.length !== 1 || sheetClosing.has(d)) return;
+          const { panel } = sheetParts(d);
+          const t = e.touches[0], r = panel.getBoundingClientRect();
+          const onHandle = t.clientY < r.top + 52; // the grab handle, and anything above the sheet
+          if (!onHandle && e.target.closest("input, textarea")) return; // leave text selection alone
+          drag = { y0: t.clientY, handle: onHandle, active: false, off: 0, h: r.height, samples: [{ y: t.clientY, t: e.timeStamp }] };
+        }, { passive: true });
+
+        d.addEventListener("touchmove", (e) => {
+          if (!drag) return;
+          const { panel, dim } = sheetParts(d);
+          const dy = e.touches[0].clientY - drag.y0;
+          if (!drag.active) {
+            if (Math.abs(dy) < 6) return;
+            // From the handle any direction drags. From the body only a downward pull does, and only when
+            // the sheet is scrolled to its top - otherwise it is an ordinary scroll.
+            if (!(drag.handle || (dy > 0 && panel.scrollTop <= 0))) { drag = null; return; }
+            drag.active = true;
+            panel.getAnimations().forEach((a) => a.cancel());
+          }
+          e.preventDefault();
+          drag.samples.push({ y: e.touches[0].clientY, t: e.timeStamp });
+          if (drag.samples.length > 6) drag.samples.shift();
+          // Down follows the finger one-to-one. Up is a rubber band: it gives a little, then stiffens.
+          const K = 56;
+          drag.off = dy >= 0 ? dy : -K * (1 - 1 / (1 + -dy / K));
+          panel.style.transform = `translateY(${drag.off}px)`;
+          dim.style.opacity = String(Math.max(0, 1 - Math.max(0, drag.off) / (drag.h * 0.9)));
+        }, { passive: false });
+
+        const release = () => {
+          const g = drag;
+          drag = null;
+          if (!g || !g.active) return;
+          const { panel, dim } = sheetParts(d);
+          const first = g.samples[0], last = g.samples[g.samples.length - 1];
+          const v = last.t > first.t ? (last.y - first.y) / (last.t - first.t) : 0; // px per ms, + is down
+          const dimNow = parseFloat(dim.style.opacity || "1");
+          if (g.off > g.h * 0.3 || (v > 0.5 && g.off > 20)) { closeSheet(d, g.off, dimNow); return; }
+          panel.style.transform = dim.style.opacity = ""; // spring back
+          panel.animate([{ transform: `translateY(${g.off}px)` }, { transform: "translateY(0)" }], { duration: 300, easing: EASE });
+          dim.animate([{ opacity: dimNow }, { opacity: 1 }], { duration: 300, easing: "ease-out" });
+        };
+        d.addEventListener("touchend", release);
+        d.addEventListener("touchcancel", release);
+      });
+
       // ---- Room settings (owner only; the server checks this again) -------
       function setSettingsMsg(text, kind) {
         settingsMsg.dataset.kind = kind;
@@ -2734,8 +3145,9 @@
         newPw.value = delConfirm.value = "";
         delBtn.disabled = true;
         setSettingsMsg("", "error");
-        dlg.showModal();
-        newPw.focus();
+        closeNow(roomInfoDlg); // swap sheets rather than stacking one on the other
+        openSheet(dlg);
+        focusField(newPw);
       });
       $("#settings-close").addEventListener("click", () => dlg.close());
 
@@ -2878,8 +3290,8 @@
           fillAvatar(profileAvatar, myKey, me);
           avatarRemove.hidden = !myAvatar;
           setProfileMsg("");
-          profileDlg.showModal();
-          avatarChoose.focus();
+          openSheet(profileDlg);
+          focusField(avatarChoose);
         })
       );
       avatarChoose.addEventListener("click", () => avatarFile.click());
