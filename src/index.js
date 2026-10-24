@@ -36,6 +36,11 @@ const MAX_PUSH_PER_ROOM = 40; // each push is one outgoing request, and a Worker
 const PUSH_TTL_S = 4 * 60 * 60; // if a phone is off or offline, the push service keeps a message this long
 const PUSH_BODY_CHARS = 140;
 
+// Replies and reactions
+const REPLY_SNIPPET_CHARS = 120; // how much of the original message is copied into a reply (it outlives the original)
+const REACT_GAP_MS = 250; // minimum time between reactions from one connection
+const REACTIONS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"]; // 👍 ❤️ 😂 😮 😢 🙏 - the only emoji accepted; the page offers exactly these
+
 // Set by the Worker after it has checked the login cookie. Room objects trust it
 // because only the Worker can reach them; the Worker overwrites whatever the client sent.
 const USER_HEADER = "X-Betachat-User";
@@ -214,6 +219,133 @@ function sniffImage(b) {
     }
   }
   return null;
+}
+
+// ---- Messages: replies and reactions (shared by ChatRoom and DMRoom) -------
+// Both kinds of room store messages the same way, so the table, the reply snapshot and the reactions
+// live here once. A reply stores a copy of the message it answers (who and the first part of the text)
+// next to the id: the original can be trimmed away later (KEEP_MESSAGES) without the quote going blank.
+// The copy is made by the server from its own table, never taken from the client.
+function prepareMessages(sql) {
+  sql.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      cid        TEXT    NOT NULL,  -- sender's lowercase username (rows from before accounts: a random browser id)
+      name       TEXT    NOT NULL,
+      text       TEXT    NOT NULL,
+      ts         INTEGER NOT NULL,
+      reply_id   INTEGER,           -- the message this one answers, if any (NULL for everything older than replies)
+      reply_cid  TEXT,
+      reply_name TEXT,
+      reply_text TEXT
+    )
+  `);
+  // Rooms created before replies existed have no reply columns yet
+  const have = new Set(sql.exec("PRAGMA table_info(messages)").toArray().map((column) => column.name));
+  for (const column of ["reply_id INTEGER", "reply_cid TEXT", "reply_name TEXT", "reply_text TEXT"]) {
+    if (!have.has(column.split(" ")[0])) sql.exec(`ALTER TABLE messages ADD COLUMN ${column}`);
+  }
+  // One reaction per person per message: reacting again with another emoji replaces it, with the same one removes it
+  sql.exec(`
+    CREATE TABLE IF NOT EXISTS reactions (
+      msg_id INTEGER NOT NULL,
+      cid    TEXT    NOT NULL,
+      emoji  TEXT    NOT NULL,
+      PRIMARY KEY (msg_id, cid)
+    )
+  `);
+}
+
+const MESSAGE_COLUMNS = "id, cid, name, text, ts, reply_id, reply_cid, reply_name, reply_text";
+
+// What a client receives for one stored message: {id, cid, name, text, ts, reply?, reactions?}
+function messageFromRow(row, reactions) {
+  const message = { id: row.id, cid: row.cid, name: row.name, text: row.text, ts: row.ts };
+  if (row.reply_id != null) {
+    message.reply = { id: row.reply_id, cid: row.reply_cid, name: row.reply_name, text: row.reply_text };
+  }
+  if (reactions && Object.keys(reactions).length) message.reactions = reactions;
+  return message;
+}
+
+// Who reacted with what on one message: { "👍": ["alice", "bob"], "❤️": ["carol"] } (lowercase usernames)
+function reactionsFor(sql, id) {
+  const rows = sql.exec("SELECT cid, emoji FROM reactions WHERE msg_id = ? ORDER BY rowid", id).toArray();
+  const out = {};
+  for (const row of rows) (out[row.emoji] ||= []).push(row.cid);
+  return out;
+}
+
+// The last `limit` messages, oldest first, each with its reactions: what someone gets when they join
+function recentMessages(sql, limit) {
+  const rows = sql
+    .exec(`SELECT ${MESSAGE_COLUMNS} FROM messages ORDER BY id DESC LIMIT ?`, limit)
+    .toArray()
+    .reverse();
+  if (!rows.length) return [];
+  const byMessage = new Map();
+  for (const r of sql.exec("SELECT msg_id, cid, emoji FROM reactions WHERE msg_id >= ? ORDER BY rowid", rows[0].id).toArray()) {
+    const entry = byMessage.get(r.msg_id) || {};
+    (entry[r.emoji] ||= []).push(r.cid);
+    byMessage.set(r.msg_id, entry);
+  }
+  return rows.map((row) => messageFromRow(row, byMessage.get(row.id)));
+}
+
+// Stores a new message (answering `replyTo` when that is a message still in this room) and returns it
+// in the shape clients receive. A reply to something that no longer exists is just a plain message.
+function storeMessage(sql, meta, text, now, replyTo) {
+  let reply = null;
+  if (Number.isSafeInteger(replyTo)) {
+    const original = sql.exec("SELECT id, cid, name, text FROM messages WHERE id = ?", replyTo).toArray()[0];
+    if (original) {
+      reply = {
+        id: original.id,
+        cid: original.cid,
+        name: original.name,
+        text: Array.from(original.text).slice(0, REPLY_SNIPPET_CHARS).join(""),
+      };
+    }
+  }
+  const { id } = sql
+    .exec(
+      "INSERT INTO messages (cid, name, text, ts, reply_id, reply_cid, reply_name, reply_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+      meta.key,
+      meta.user,
+      text,
+      now,
+      reply ? reply.id : null,
+      reply ? reply.cid : null,
+      reply ? reply.name : null,
+      reply ? reply.text : null
+    )
+    .one();
+  // Keep only the most recent messages (and drop the reactions that belonged to the ones that went)
+  sql.exec("DELETE FROM messages WHERE id <= ?", id - KEEP_MESSAGES);
+  sql.exec("DELETE FROM reactions WHERE msg_id <= ?", id - KEEP_MESSAGES);
+  const message = { id, cid: meta.key, name: meta.user, text, ts: now };
+  if (reply) message.reply = reply;
+  return message;
+}
+
+// Sets, changes or (same emoji again) removes this person's reaction to a message. Returns who has
+// reacted with what on that message afterwards, or null when there is nothing to do: not an accepted
+// emoji, or a message that isn't in this room.
+function toggleReaction(sql, meta, id, emoji) {
+  if (!Number.isSafeInteger(id) || typeof emoji !== "string" || !REACTIONS.includes(emoji)) return null;
+  if (!sql.exec("SELECT 1 AS x FROM messages WHERE id = ?", id).toArray().length) return null;
+  const current = sql.exec("SELECT emoji FROM reactions WHERE msg_id = ? AND cid = ?", id, meta.key).toArray()[0];
+  if (current && current.emoji === emoji) {
+    sql.exec("DELETE FROM reactions WHERE msg_id = ? AND cid = ?", id, meta.key);
+  } else {
+    sql.exec(
+      "INSERT INTO reactions (msg_id, cid, emoji) VALUES (?, ?, ?) ON CONFLICT(msg_id, cid) DO UPDATE SET emoji = excluded.emoji",
+      id,
+      meta.key,
+      emoji
+    );
+  }
+  return reactionsFor(sql, id);
 }
 
 // ---------------------------------------------------------------------------
@@ -737,7 +869,8 @@ export class UserDirectory extends DurableObject {
 //
 // Protocol
 //   client -> server  {type:"join", password?}   must be sent first
-//   client -> server  {type:"message", text}
+//   client -> server  {type:"message", text, replyTo?}   replyTo: id of the message being answered
+//   client -> server  {type:"react", id, emoji}         react to a message (same emoji again takes it back)
 //   client -> server  {type:"set_password", password}   owner only; signs everyone else out
 //   client -> server  {type:"remove_password"}          owner only; makes the room public
 //   client -> server  {type:"delete_room"}              owner only; wipes the room
@@ -753,7 +886,9 @@ export class UserDirectory extends DurableObject {
 //   server -> client  {type:"settings_error", message}
 //   server -> client  {type:"avatar", cid, v}           that person's picture changed; v is its version (0 = none)
 //   server -> client  {type:"typing", cid, name, typing}   someone else started or stopped typing
+//   server -> client  {type:"reactions", id, reactions}   everyone's reactions to one message: {emoji: [username, ...]}
 //   server -> client  {type:"message" | "presence" | "error", ...}
+//   A message is {id, cid, name, text, ts, reply?: {id, cid, name, text}, reactions?: {emoji: [username, ...]}}
 // A socket receives nothing about the room until its join succeeds.
 // ---------------------------------------------------------------------------
 export class ChatRoom extends DurableObject {
@@ -761,15 +896,7 @@ export class ChatRoom extends DurableObject {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.avatarWaiting = new Set(); // sockets with a "picture changed" notice waiting out the gap
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id   INTEGER PRIMARY KEY AUTOINCREMENT,
-        cid  TEXT    NOT NULL,  -- sender's lowercase username (rows from before accounts: a random browser id)
-        name TEXT    NOT NULL,
-        text TEXT    NOT NULL,
-        ts   INTEGER NOT NULL
-      )
-    `);
+    prepareMessages(this.sql);
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS room (
         id      INTEGER PRIMARY KEY CHECK (id = 1),
@@ -855,6 +982,8 @@ export class ChatRoom extends DurableObject {
     switch (data.type) {
       case "message":
         return this.postMessage(ws, meta, data);
+      case "react":
+        return this.react(ws, meta, data);
       case "set_password":
         return this.setPassword(ws, meta, data.password);
       case "remove_password":
@@ -938,27 +1067,24 @@ export class ChatRoom extends DurableObject {
     }
     ws.serializeAttachment({ ...meta, last: now, typing: false }); // the message itself ends "typing"
 
-    // The sender is whoever is logged in on this socket, whatever the client claims
-    const { id } = this.sql
-      .exec(
-        "INSERT INTO messages (cid, name, text, ts) VALUES (?, ?, ?, ?) RETURNING id",
-        meta.key,
-        meta.user,
-        text,
-        now
-      )
-      .one();
+    // The sender is whoever is logged in on this socket, whatever the client claims; a reply's quoted
+    // part is copied from the room's own record of the original, not from the client
+    const message = storeMessage(this.sql, meta, text, now, data.replyTo);
 
-    // Keep only the most recent messages
-    this.sql.exec("DELETE FROM messages WHERE id <= ?", id - KEEP_MESSAGES);
-
-    this.broadcast({
-      type: "message",
-      message: { id, cid: meta.key, name: meta.user, text, ts: now },
-    });
+    this.broadcast({ type: "message", message });
 
     // Everyone connected has it now; tell the people who aren't looking
     await this.pushToAway(meta, text);
+  }
+
+  // Reactions are stored with the message and sent to everyone, including the person who reacted,
+  // as the full set for that one message: clients just replace what they have.
+  react(ws, meta, data) {
+    const now = Date.now();
+    if (meta.lastReact && now - meta.lastReact < REACT_GAP_MS) return;
+    ws.serializeAttachment({ ...meta, lastReact: now });
+    const reactions = toggleReaction(this.sql, meta, data.id, data.emoji);
+    if (reactions) this.broadcast({ type: "reactions", id: data.id, reactions });
   }
 
   // ---- Notifications for people who are away --------------------------------
@@ -1133,13 +1259,7 @@ export class ChatRoom extends DurableObject {
     const current = ws.deserializeAttachment() || {};
     ws.serializeAttachment({ ...current, authed: true });
 
-    const history = this.sql
-      .exec(
-        "SELECT id, cid, name, text, ts FROM messages ORDER BY id DESC LIMIT ?",
-        HISTORY_LIMIT
-      )
-      .toArray()
-      .reverse();
+    const history = recentMessages(this.sql, HISTORY_LIMIT);
     ws.send(JSON.stringify({ type: "joined", private: !!config.private, owner: isOwner, created }));
     ws.send(JSON.stringify({ type: "history", messages: history }));
     this.broadcastPresence();
@@ -1211,6 +1331,7 @@ export class ChatRoom extends DurableObject {
     // Wipe first, then tell everyone. With no room row and no messages, the next person
     // to join this name starts a brand new room and becomes its owner.
     this.sql.exec("DELETE FROM messages");
+    this.sql.exec("DELETE FROM reactions");
     this.sql.exec("DELETE FROM room");
     this.sql.exec("DELETE FROM auth_attempts");
     this.sql.exec("DELETE FROM push_subs");
@@ -1325,7 +1446,8 @@ export class ChatRoom extends DurableObject {
 //
 // Protocol
 //   client -> server  {type:"join"}                       must be sent first
-//   client -> server  {type:"message", text}
+//   client -> server  {type:"message", text, replyTo?}     replyTo: id of the message being answered
+//   client -> server  {type:"react", id, emoji}            react to a message (same emoji again takes it back)
 //   client -> server  {type:"avatar_updated"}              "I changed my picture"
 //   client -> server  {type:"typing", typing:true|false}
 //   client -> server  {type:"away", away:true|false}
@@ -1335,22 +1457,15 @@ export class ChatRoom extends DurableObject {
 //   server -> client  {type:"join_error", code, message}   socket is closed
 //   server -> client  {type:"avatar", cid, v}
 //   server -> client  {type:"typing", cid, name, typing}
-//   server -> client  {type:"message" | "presence" | "error", ...}
+//   server -> client  {type:"reactions", id, reactions}
+//   server -> client  {type:"message" | "presence" | "error", ...}   (messages look the same as in ChatRoom)
 // ---------------------------------------------------------------------------
 export class DMRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.avatarWaiting = new Set();
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id   INTEGER PRIMARY KEY AUTOINCREMENT,
-        cid  TEXT    NOT NULL,
-        name TEXT    NOT NULL,
-        text TEXT    NOT NULL,
-        ts   INTEGER NOT NULL
-      )
-    `);
+    prepareMessages(this.sql);
     // Devices to notify when their owner isn't watching this conversation. Same shape as ChatRoom's,
     // just without a room-wide cap: a conversation only ever has two people in it.
     this.sql.exec(`
@@ -1406,6 +1521,8 @@ export class DMRoom extends DurableObject {
     switch (data.type) {
       case "message":
         return this.postMessage(ws, meta, data);
+      case "react":
+        return this.react(ws, meta, data);
       case "avatar_updated":
         return this.avatarUpdated(ws, meta);
       case "typing":
@@ -1447,10 +1564,7 @@ export class DMRoom extends DurableObject {
 
     ws.serializeAttachment({ ...meta, authed: true, peerKey, peerName: profile.name });
 
-    const history = this.sql
-      .exec("SELECT id, cid, name, text, ts FROM messages ORDER BY id DESC LIMIT ?", HISTORY_LIMIT)
-      .toArray()
-      .reverse();
+    const history = recentMessages(this.sql, HISTORY_LIMIT);
     ws.send(JSON.stringify({ type: "joined", peer: profile.name, peerKey, peerAvatar: profile.avatar ?? null }));
     ws.send(JSON.stringify({ type: "history", messages: history }));
     this.broadcastPresence();
@@ -1514,12 +1628,9 @@ export class DMRoom extends DurableObject {
     }
     ws.serializeAttachment({ ...meta, last: now, typing: false });
 
-    const { id } = this.sql
-      .exec("INSERT INTO messages (cid, name, text, ts) VALUES (?, ?, ?, ?) RETURNING id", meta.key, meta.user, text, now)
-      .one();
-    this.sql.exec("DELETE FROM messages WHERE id <= ?", id - KEEP_MESSAGES);
+    const message = storeMessage(this.sql, meta, text, now, data.replyTo);
 
-    this.broadcast({ type: "message", message: { id, cid: meta.key, name: meta.user, text, ts: now } });
+    this.broadcast({ type: "message", message });
 
     try {
       await this.env.USERS.get(this.env.USERS.idFromName("global")).touchConversation(meta.key, meta.peerKey, meta.key, text, now);
@@ -1537,6 +1648,14 @@ export class DMRoom extends DurableObject {
     }
 
     await this.pushToAway(meta, text);
+  }
+
+  react(ws, meta, data) {
+    const now = Date.now();
+    if (meta.lastReact && now - meta.lastReact < REACT_GAP_MS) return;
+    ws.serializeAttachment({ ...meta, lastReact: now });
+    const reactions = toggleReaction(this.sql, meta, data.id, data.emoji);
+    if (reactions) this.broadcast({ type: "reactions", id: data.id, reactions });
   }
 
   async pushSubscribe(ws, meta, input) {
