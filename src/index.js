@@ -466,6 +466,42 @@ async function handleApi(request, env, url) {
     return json({ rooms });
   }
 
+  // Mute, unmute or leave one of your rooms (from the Rooms list). The room itself checks that you are in it.
+  if (url.pathname === "/api/rooms/member" && request.method === "POST") {
+    const token = getCookie(request, COOKIE);
+    const session = token ? await users.whoami(token) : null;
+    if (!session) return json({ error: "Not logged in." }, 401);
+    let body = null;
+    try {
+      const text = await request.text();
+      if (text.length <= 512) body = JSON.parse(text);
+    } catch {}
+    if (!body || typeof body.room !== "string" || typeof body.action !== "string") return json({ error: "Bad request." }, 400);
+    try {
+      const stub = env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName(cleanRoom(body.room)));
+      return (await stub.setMembership(session.key, body.action)) ? json({ ok: true }) : json({ error: "You are not in that room." }, 404);
+    } catch {
+      return json({ error: "Bad request." }, 400);
+    }
+  }
+
+  // Mute, unmute or hide one of your direct-message conversations (from the Messages list)
+  if (url.pathname === "/api/dm/pref" && request.method === "POST") {
+    const token = getCookie(request, COOKIE);
+    const session = token ? await users.whoami(token) : null;
+    if (!session) return json({ error: "Not logged in." }, 401);
+    let body = null;
+    try {
+      const text = await request.text();
+      if (text.length <= 512) body = JSON.parse(text);
+    } catch {}
+    if (!body || typeof body.peer !== "string" || typeof body.action !== "string") return json({ error: "Bad request." }, 400);
+    const peerKey = body.peer.trim().toLowerCase().slice(0, 64);
+    return (await users.setConversationPref(session.key, peerKey, body.action))
+      ? json({ ok: true })
+      : json({ error: "No such conversation." }, 404);
+  }
+
   // Anyone logged in can look at anyone's picture (the name is the lookup key)
   if (url.pathname.startsWith("/api/avatar/") && request.method === "GET") return getAvatar(request, env, url);
 
@@ -635,6 +671,17 @@ export class UserDirectory extends DurableObject {
         pair TEXT NOT NULL,
         key  TEXT NOT NULL,
         ts   INTEGER NOT NULL,
+        PRIMARY KEY (pair, key)
+      )
+    `);
+    // One person's own choices about a conversation: muted (no notifications, out of the badge counts), and
+    // hidden (gone from their list until something newer than `hidden_ts` arrives; the messages are untouched).
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS dm_prefs (
+        pair      TEXT NOT NULL,
+        key       TEXT NOT NULL,
+        muted     INTEGER NOT NULL DEFAULT 0,
+        hidden_ts INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (pair, key)
       )
     `);
@@ -823,6 +870,30 @@ export class UserDirectory extends DurableObject {
     this.markRead(keyA, keyB, senderKey, ts);
   }
 
+  // Mute, unmute or hide a conversation, for the person asking only. Hiding keeps every message; the
+  // conversation just leaves this person's list until a newer message arrives (from either side).
+  setConversationPref(key, peerKey, action) {
+    const { pair } = this.pairOf(key, peerKey);
+    const row = this.sql.exec("SELECT last_ts FROM dm_pairs WHERE pair = ?", pair).toArray()[0];
+    if (!row) return false;
+    this.sql.exec("INSERT OR IGNORE INTO dm_prefs (pair, key) VALUES (?, ?)", pair, key);
+    if (action === "mute" || action === "unmute") {
+      this.sql.exec("UPDATE dm_prefs SET muted = ? WHERE pair = ? AND key = ?", action === "mute" ? 1 : 0, pair, key);
+    } else if (action === "hide") {
+      this.sql.exec("UPDATE dm_prefs SET hidden_ts = ? WHERE pair = ? AND key = ?", row.last_ts, pair, key);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  // A DMRoom asks this before notifying someone's devices
+  isConversationMuted(key, peerKey) {
+    const { pair } = this.pairOf(key, peerKey);
+    const row = this.sql.exec("SELECT muted FROM dm_prefs WHERE pair = ? AND key = ?", pair, key).toArray()[0];
+    return !!row && !!row.muted;
+  }
+
   // A DMRoom calls this after its newest message was deleted: the list preview falls back to the message
   // before it (or to nothing). Because the preview's time and sender change with it, "unread" is simply
   // worked out again from the new newest message.
@@ -858,13 +929,14 @@ export class UserDirectory extends DurableObject {
         `SELECT p.pair AS pair,
                 CASE WHEN p.key_a = ? THEN p.key_b ELSE p.key_a END AS peer_key,
                 p.last_ts AS last_ts, p.last_text AS last_text, p.last_sender AS last_sender,
-                COALESCE(r.ts, 0) AS read_ts
+                COALESCE(r.ts, 0) AS read_ts, COALESCE(f.muted, 0) AS muted
          FROM dm_pairs p
          LEFT JOIN dm_reads r ON r.pair = p.pair AND r.key = ?
-         WHERE p.key_a = ? OR p.key_b = ?
+         LEFT JOIN dm_prefs f ON f.pair = p.pair AND f.key = ?
+         WHERE (p.key_a = ? OR p.key_b = ?) AND p.last_ts > COALESCE(f.hidden_ts, 0)
          ORDER BY p.last_ts DESC
          LIMIT 200`,
-        key, key, key, key
+        key, key, key, key, key
       )
       .toArray();
 
@@ -878,6 +950,7 @@ export class UserDirectory extends DurableObject {
         lastTs: row.last_ts,
         lastMine: row.last_sender === key,
         unread: row.last_sender !== key && row.last_ts > row.read_ts,
+        muted: !!row.muted,
       };
     });
   }
@@ -981,9 +1054,14 @@ export class ChatRoom extends DurableObject {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS members (
         key     TEXT    PRIMARY KEY,
-        read_id INTEGER NOT NULL
+        read_id INTEGER NOT NULL,
+        muted   INTEGER NOT NULL DEFAULT 0  -- 1: no notifications from this room, and it stays out of the badge counts
       )
     `);
+    // Created by an earlier version without the muted column
+    if (!this.sql.exec("PRAGMA table_info(members)").toArray().some((column) => column.name === "muted")) {
+      this.sql.exec("ALTER TABLE members ADD COLUMN muted INTEGER NOT NULL DEFAULT 0");
+    }
 
     // Wrong-password counters per IP; rows are deleted once they are older than LOCK_MS
     this.sql.exec(`
@@ -1212,7 +1290,7 @@ export class ChatRoom extends DurableObject {
       const subject = this.env.VAPID_SUBJECT || meta.origin;
       if (!subject) return;
 
-      const subs = this.sql.exec("SELECT endpoint, cid, p256dh, auth FROM push_subs WHERE cid != ?", meta.key).toArray();
+      const subs = this.sql.exec("SELECT endpoint, cid, p256dh, auth FROM push_subs WHERE cid != ? AND cid NOT IN (SELECT key FROM members WHERE muted = 1)", meta.key).toArray();
       if (!subs.length) return;
 
       const watching = new Set();
@@ -1503,15 +1581,33 @@ export class ChatRoom extends DurableObject {
     return row && row.id ? row.id : 0;
   }
 
+  // Mute, unmute or leave, for the Rooms list. Only people who are in the room can do any of it.
+  // Leaving also ends this person's notifications from the room; getting back in works as it always did
+  // (so a private room asks for its password again).
+  setMembership(key, action) {
+    const member = this.sql.exec("SELECT key FROM members WHERE key = ?", key).toArray()[0];
+    if (!member) return false;
+    if (action === "mute" || action === "unmute") {
+      this.sql.exec("UPDATE members SET muted = ? WHERE key = ?", action === "mute" ? 1 : 0, key);
+    } else if (action === "leave") {
+      this.sql.exec("DELETE FROM push_subs WHERE cid = ?", key);
+      this.sql.exec("DELETE FROM members WHERE key = ?", key);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
   // Asked by the worker for the Rooms list. Only people who have been let in get an answer; for anyone
   // else this says nothing at all, not even whether the room exists. `unread` is capped at 99.
   statusFor(key) {
-    const member = this.sql.exec("SELECT read_id FROM members WHERE key = ?", key).toArray()[0];
+    const member = this.sql.exec("SELECT read_id, muted FROM members WHERE key = ?", key).toArray()[0];
     if (!member || !this.getConfig()) return null;
     const unread = this.sql.exec("SELECT COUNT(*) AS n FROM messages WHERE id > ? AND cid != ?", member.read_id, key).one().n;
     const last = this.sql.exec("SELECT cid, name, text, ts FROM messages ORDER BY id DESC LIMIT 1").toArray()[0];
     return {
       unread: Math.min(unread, 99),
+      muted: !!member.muted,
       last: last ? { mine: last.cid === key, name: last.name, text: Array.from(last.text).slice(0, 80).join(""), ts: last.ts } : null,
     };
   }
@@ -1827,6 +1923,11 @@ export class DMRoom extends DurableObject {
 
       const subs = this.sql.exec("SELECT endpoint, cid, p256dh, auth FROM push_subs WHERE cid = ?", meta.peerKey).toArray();
       if (!subs.length) return;
+      try {
+        // They muted this conversation: no notifications (if the directory can't be asked, notify as usual)
+        const users = this.env.USERS.get(this.env.USERS.idFromName("global"));
+        if (await users.isConversationMuted(meta.peerKey, meta.key)) return;
+      } catch {}
 
       const watching = this.liveSockets().some((s) => {
         const info = s.deserializeAttachment() || {};
