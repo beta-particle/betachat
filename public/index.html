@@ -1083,6 +1083,22 @@
     .room.has-unread .room-name { font-weight: 700; }
     .room.has-unread .dm-preview { color: var(--ink); }
     .dm-preview.draft::before { content: "Draft: "; color: var(--danger); font-weight: 600; }
+    /* ---- Swipe actions, muted rooms ---- */
+    .swipe-actions { display: none; }
+    .room-muted { flex: none; display: inline-flex; color: var(--muted); }
+    .room-count.muted { background: var(--muted); }
+    .dm-unread.muted { background: var(--muted); }
+    .room.is-muted .room-name { color: var(--muted); }
+    @media (max-width: 799px) {
+      .swipe-row { position: relative; overflow: hidden; touch-action: pan-y; list-style: none; }
+      .swipe-row .room { position: relative; background: var(--page); will-change: transform; }
+      .swipe-actions { display: flex; position: absolute; top: 0; right: 0; bottom: 0; width: 168px; }
+      .swipe-btn { flex: 1; min-height: 0; padding: 0; border: 0; border-radius: 0; font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+      .swipe-mute { background: var(--accent); color: var(--accent-ink, #2a2000); }
+      .swipe-leave { background: var(--danger); color: #fff; }
+      .swipe-hide { background: #5c6d67; color: #fff; }
+      .swipe-btn:active { filter: brightness(0.92); }
+    }
   </style>
 </head>
 <body>
@@ -1381,6 +1397,7 @@
         <li><button class="set-row" type="button" id="copy"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span><span class="set-label">Copy invite link</span></button></li>
         <li><button class="set-row" type="button" id="share-btn"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></span><span class="set-label">Share…</span></button></li>
         <li><button class="set-row" type="button" id="alerts-btn" aria-pressed="false"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><span class="set-label">Alerts</span><span class="soon" id="alerts-state">Off</span><span class="tog" aria-hidden="true"></span></button></li>
+        <li><button class="set-row" type="button" id="mute-btn" aria-pressed="false"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8c0 2.2.3 4 .9 5.3M3 17h13M13.7 21a2 2 0 0 1-3.4 0M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9M1 1l22 22"/></svg></span><span class="set-label">Mute room</span><span class="soon" id="mute-state">Off</span><span class="tog" aria-hidden="true"></span></button></li>
         <li><button class="set-row" type="button" id="settings-btn"><span class="set-chip" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></span><span class="set-label">Room settings</span><svg class="set-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></li>
       </ul>
     </div>
@@ -1661,7 +1678,8 @@
       // name is empty and new, and if that name was a typo it leaves nothing behind.
       const MAX_ROOMS = 30;
       let roomList = [];  // [{ name, private, ts }]
-      let roomStatus = {}; // name -> { unread, last: { mine, name, text, ts } }, from the server, for rooms you have been in
+      let roomStatus = {}; // name -> { unread, muted, last: { mine, name, text, ts } }, from the server, for rooms you have been in
+      let openRow = null, rowSwipe = null, swipeEndedAt = 0; // swipe-to-reveal on the Rooms list (see below)
 
       // ---- Drafts: a half-typed message waits for you in each conversation ----
       const draftKey = (convo) => `betachat:draft:${myKey}:${convo}`;
@@ -1682,6 +1700,7 @@
       const LOCK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="sr">(private)</span>';
       // Shown on whichever room currently has Alerts (there's only ever one: it follows the room you're
       // in, not every room you've joined). Rendered by the same loop that highlights the current room.
+      const MUTE_ICON = '<span class="room-muted" title="Muted"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.7 3A6 6 0 0 1 18 8c0 2.2.3 4 .9 5.3M3 17h13M13.7 21a2 2 0 0 1-3.4 0M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9M1 1l22 22"/></svg></span>';
       const BELL_ICON = '<span class="room-alert"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 4 1.3 5.4 2 6H4c.7-.6 2-2 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="sr">Alerts are on for this room</span></span>';
 
       function loadRooms() {
@@ -1781,12 +1800,30 @@
         if (!live && st && st.unread > 0) {
           button.classList.add("has-unread");
           const count = document.createElement("span");
-          count.className = "room-count";
+          count.className = "room-count" + (st.muted ? " muted" : "");
           count.textContent = st.unread > 99 ? "99+" : String(st.unread);
           count.setAttribute("aria-label", `${st.unread} unread`);
           button.append(count);
         }
-        li.append(button);
+        if (st && st.muted) {
+          button.classList.add("is-muted");
+          button.insertAdjacentHTML("beforeend", MUTE_ICON); // fixed markup, no user data
+        }
+        // Swipe the row left on a phone to reach these (the CSS keeps them hidden everywhere else)
+        li.className = "swipe-row";
+        const actions = document.createElement("div");
+        actions.className = "swipe-actions";
+        actions.setAttribute("aria-hidden", "true");
+        for (const [act, text] of [[st && st.muted ? "unmute" : "mute", st && st.muted ? "Unmute" : "Mute"], ["leave", "Leave"]]) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.tabIndex = -1;
+          b.className = `swipe-btn swipe-${act === "leave" ? "leave" : "mute"}`;
+          b.dataset.swipeAct = act;
+          b.textContent = text;
+          actions.append(b);
+        }
+        li.append(actions, button);
         return li;
       }
 
@@ -1797,12 +1834,13 @@
         const signature = list.map((r) => {
           const st = roomStatus[r.name];
           const live = convoType === "room" && joined && room === r.name;
-          return `${r.name}${r.private ? "*" : ""}:${live ? 0 : st ? st.unread : 0}:${st && st.last ? st.last.ts : 0}:${getDraft(`room:${r.name}`)}`;
+          return `${r.name}${r.private ? "*" : ""}${st && st.muted ? "m" : ""}:${live ? 0 : st ? st.unread : 0}:${st && st.last ? st.last.ts : 0}:${getDraft(`room:${r.name}`)}`;
         }).join(",") + `|${roomQuery}`;
         const lists = [...document.querySelectorAll("[data-room-list]")];
 
         if (signature !== renderedRooms) {
           renderedRooms = signature;
+          openRow = null; // the rows are about to be replaced
           const active = document.activeElement;
           const focusName = active && active.classList.contains("room") ? active.dataset.room : "";
           const focusIn = focusName ? lists.indexOf(active.closest("[data-room-list]")) : -1;
@@ -1829,6 +1867,7 @@
         const noRooms = $("#rooms-search-empty");
         noRooms.hidden = !(roomQuery && list.length && !list.some(roomMatches));
         noRooms.textContent = `No rooms match \u201C${roomsSearch.value.trim()}\u201D`;
+        syncMuteBtn();
         updateBadges();
       }
 
@@ -1842,6 +1881,54 @@
         } catch {}
       }
 
+      // Mute / unmute / leave a room. Leaving is also done locally (the server can only forget you if it knew you).
+      async function roomAction(name, action) {
+        let ok = false;
+        try { ({ ok } = await api("/api/rooms/member", { room: name, action })); } catch {}
+        if (action === "leave") {
+          delete roomStatus[name];
+          forgetRoom(name);
+          showToast(`Left #${name}`);
+          return;
+        }
+        if (!ok) { notify("Open this room once, then you can mute it."); return; }
+        roomStatus[name] = { unread: 0, last: null, ...(roomStatus[name] || {}), muted: action === "mute" };
+        renderedRooms = null; // force the rows to be redrawn
+        renderRooms();
+        showToast(action === "mute" ? `Muted #${name}` : `Unmuted #${name}`);
+      }
+
+      // Mute / unmute / hide a direct-message conversation
+      async function dmAction(peerKeyArg, action) {
+        let ok = false;
+        try { ({ ok } = await api("/api/dm/pref", { peer: peerKeyArg, action })); } catch {}
+        if (!ok) { notify("That didn't work. Try again in a moment."); return; }
+        const c = dmList.find((x) => x.peerKey === peerKeyArg);
+        const who = c ? c.peer : peerKeyArg;
+        if (action === "hide") {
+          dmList = dmList.filter((x) => x.peerKey !== peerKeyArg);
+          showToast(`Hidden. A new message from ${who} brings it back.`, 3200);
+        } else {
+          if (c) c.muted = action === "mute";
+          showToast(action === "mute" ? `Muted ${who}` : `Unmuted ${who}`);
+        }
+        renderedDMs = null; // force the rows to be redrawn
+        renderDMs();
+        syncMuteBtn();
+      }
+
+      // The "Mute room" row in the room info sheet mirrors the same setting
+      function syncMuteBtn() {
+        const row = $("#mute-btn");
+        if (!row) return;
+        const dm = convoType === "dm" ? dmList.find((c) => c.peerKey === peerKey) : null;
+        const muted = convoType === "dm" ? !!(dm && dm.muted) : !!(roomStatus[room] && roomStatus[room].muted);
+        row.parentElement.hidden = convoType === "dm" && !dm; // a conversation with no message yet can't be muted
+        row.querySelector(".set-label").textContent = convoType === "dm" ? "Mute conversation" : "Mute room";
+        row.setAttribute("aria-pressed", String(muted));
+        $("#mute-state").textContent = muted ? "On" : "Off";
+      }
+
       // Counts on the tab icons and on the Home Screen icon (where the browser supports it)
       function updateBadges() {
         const watching = !document.hidden;
@@ -1849,9 +1936,9 @@
         for (const r of roomList) {
           const st = roomStatus[r.name];
           const live = watching && convoType === "room" && joined && room === r.name;
-          if (st && !live) rooms += st.unread;
+          if (st && !live && !st.muted) rooms += st.unread; // a muted room never adds to the badges
         }
-        const dms = dmList.filter((c) => c.unread && !(watching && convoType === "dm" && joined && c.peerKey === peerKey)).length;
+        const dms = dmList.filter((c) => c.unread && !c.muted && !(watching && convoType === "dm" && joined && c.peerKey === peerKey)).length;
         for (const [key, n, label] of [["rooms", rooms, "Rooms"], ["messages", dms, "Messages"]]) {
           const badge = document.querySelector(`[data-badge="${key}"]`);
           if (!badge) continue;
@@ -1928,17 +2015,35 @@
           time.textContent = fmtRelative(c.lastTs);
           button.append(time);
         }
-        if (c.unread) {
-          button.insertAdjacentHTML("beforeend", '<span class="dm-unread" aria-hidden="true"></span><span class="sr">Unread</span>');
+        if (c.muted) {
+          button.classList.add("is-muted");
+          button.insertAdjacentHTML("beforeend", MUTE_ICON); // fixed markup, no user data
         }
-        li.append(button);
+        if (c.unread) {
+          button.insertAdjacentHTML("beforeend", `<span class="dm-unread${c.muted ? " muted" : ""}" aria-hidden="true"></span><span class="sr">Unread</span>`);
+        }
+        // Swipe left on a phone: Mute / Unmute and Hide (the conversation comes back when something new arrives)
+        li.className = "swipe-row";
+        const actions = document.createElement("div");
+        actions.className = "swipe-actions";
+        actions.setAttribute("aria-hidden", "true");
+        for (const [act, text] of [[c.muted ? "unmute" : "mute", c.muted ? "Unmute" : "Mute"], ["hide", "Hide"]]) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.tabIndex = -1;
+          b.className = `swipe-btn swipe-${act === "hide" ? "hide" : "mute"}`;
+          b.dataset.swipeAct = act;
+          b.textContent = text;
+          actions.append(b);
+        }
+        li.append(actions, button);
         return li;
       }
 
       // Draws the list in both places (sidebar, and above the join form on a phone), same as renderRooms.
       function renderDMs() {
         const list = visibleDMs();
-        const signature = list.map((c) => `${c.peerKey}:${c.lastTs}:${c.unread ? 1 : 0}:${c.lastText}:${getDraft(`dm:${c.peerKey}`)}`).join(",") + `|${dmQuery}`;
+        const signature = list.map((c) => `${c.peerKey}${c.muted ? "m" : ""}:${c.lastTs}:${c.unread ? 1 : 0}:${c.lastText}:${getDraft(`dm:${c.peerKey}`)}`).join(",") + `|${dmQuery}`;
         const lists = [...document.querySelectorAll("[data-dm-list]")];
 
         if (signature !== renderedDMs) {
@@ -1965,6 +2070,7 @@
         const noDMs = $("#dms-search-empty");
         noDMs.hidden = !(dmQuery && list.length && !list.some(dmMatches));
         noDMs.textContent = `No conversations match \u201C${dmsSearch.value.trim()}\u201D`;
+        syncMuteBtn();
         updateBadges();
       }
 
@@ -3668,6 +3774,96 @@
         if (!target) return;
         event.preventDefault();
         enterDM(target.dataset.dmTarget, target.dataset.dmName || "");
+      });
+
+      $("#mute-btn").addEventListener("click", () => {
+        if (convoType === "dm") {
+          const dm = dmList.find((c) => c.peerKey === peerKey);
+          if (dm) dmAction(peerKey, dm.muted ? "unmute" : "mute");
+          return;
+        }
+        const muted = !!(roomStatus[room] && roomStatus[room].muted);
+        roomAction(room, muted ? "unmute" : "mute");
+      });
+
+      // ---- Swipe a room row left (phone) to reveal Mute and Leave ----
+      const SWIPE_W = 168; // px, the width of the two buttons together
+      const onPhone = () => window.matchMedia("(max-width: 799px)").matches;
+      function setRow(li, x, animate) {
+        const btn = li.querySelector(".room");
+        btn.style.transition = animate ? "transform 0.2s ease" : "none";
+        btn.style.transform = x ? `translateX(${x}px)` : "";
+      }
+      function closeSwipe() {
+        if (!openRow) return;
+        setRow(openRow, 0, true);
+        const leave = openRow.querySelector('[data-swipe-act="leave"]');
+        if (leave) { leave.dataset.armed = "0"; leave.textContent = "Leave"; }
+        openRow = null;
+      }
+      document.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" || !onPhone()) return;
+        const li = e.target.closest && e.target.closest(".swipe-row");
+        if (openRow && li !== openRow) closeSwipe(); // touching anything else puts it away
+        if (!li || e.target.closest("[data-swipe-act]")) return;
+        rowSwipe = { li, id: e.pointerId, x0: e.clientX, y0: e.clientY, base: li === openRow ? -SWIPE_W : 0, drag: false, x: 0, last: e.clientX, v: 0 };
+      });
+      document.addEventListener("pointermove", (e) => {
+        if (!rowSwipe || e.pointerId !== rowSwipe.id) return;
+        const dx = e.clientX - rowSwipe.x0, dy = e.clientY - rowSwipe.y0;
+        if (!rowSwipe.drag) {
+          if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { rowSwipe = null; return; } // that's a scroll
+          if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+          rowSwipe.drag = true;
+          try { rowSwipe.li.setPointerCapture(e.pointerId); } catch {}
+        }
+        rowSwipe.x = Math.max(-SWIPE_W - 24, Math.min(0, rowSwipe.base + dx)); // gives a little past the end
+        rowSwipe.v = e.clientX - rowSwipe.last;
+        rowSwipe.last = e.clientX;
+        setRow(rowSwipe.li, rowSwipe.x, false);
+      });
+      function endRowSwipe(e) {
+        if (!rowSwipe || e.pointerId !== rowSwipe.id) return;
+        const s = rowSwipe;
+        rowSwipe = null;
+        if (!s.drag) return;
+        swipeEndedAt = Date.now();
+        const open = s.v < -4 ? true : s.v > 4 ? false : s.x < -SWIPE_W / 2; // a flick decides; otherwise, past halfway
+        if (open) {
+          if (openRow && openRow !== s.li) closeSwipe();
+          setRow(s.li, -SWIPE_W, true);
+          openRow = s.li;
+        } else {
+          setRow(s.li, 0, true);
+          if (openRow === s.li) openRow = null;
+        }
+      }
+      document.addEventListener("pointerup", endRowSwipe);
+      document.addEventListener("pointercancel", endRowSwipe);
+      // The tap that ends a swipe (or lands on a row that is sitting open) must not enter the room
+      document.addEventListener("click", (e) => {
+        const row = e.target.closest && e.target.closest(".room");
+        if (Date.now() - swipeEndedAt < 350 || (openRow && row && openRow.contains(row))) {
+          e.stopPropagation();
+          e.preventDefault();
+          if (openRow && Date.now() - swipeEndedAt >= 350) closeSwipe();
+        }
+      }, true);
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest && e.target.closest("[data-swipe-act]");
+        if (!b) return;
+        const rowBtn = b.closest("li").querySelector(".room");
+        if (rowBtn.dataset.dm) { closeSwipe(); dmAction(rowBtn.dataset.dm, b.dataset.swipeAct); return; }
+        const name = rowBtn.dataset.room;
+        if (b.dataset.swipeAct === "leave") {
+          // Two taps, like Delete: the first one only asks
+          if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Sure?"; return; }
+          closeSwipe();
+          roomAction(name, "leave");
+          return;
+        }
+        closeSwipe();
+        roomAction(name, b.dataset.swipeAct);
       });
 
       // "Choose another room": back to the Rooms list
