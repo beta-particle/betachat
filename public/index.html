@@ -1091,7 +1091,10 @@
     .room.is-muted .room-name { color: var(--muted); }
     @media (max-width: 799px) {
       .swipe-row { position: relative; overflow: hidden; touch-action: pan-y; list-style: none; }
-      .swipe-row .room { position: relative; background: var(--page); will-change: transform; }
+      /* Opaque in every state (the "current room" and hover rules would otherwise make it see-through and show the buttons) */
+      .swipe-row .room, .swipe-row .room:hover, .my-rooms .swipe-row .room[aria-current="true"], .my-dms .swipe-row .room[aria-current="true"] { position: relative; background: var(--page); will-change: transform; }
+      .swipe-actions { visibility: hidden; }
+      .swipe-row.revealed .swipe-actions { visibility: visible; }
       .swipe-actions { display: flex; position: absolute; top: 0; right: 0; bottom: 0; width: 168px; }
       .swipe-btn { flex: 1; min-height: 0; padding: 0; border: 0; border-radius: 0; font: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
       .swipe-mute { background: var(--accent); color: var(--accent-ink, #2a2000); }
@@ -3791,6 +3794,9 @@
       const onPhone = () => window.matchMedia("(max-width: 799px)").matches;
       function setRow(li, x, animate) {
         const btn = li.querySelector(".room");
+        li._x = x;
+        if (x) li.classList.add("revealed");
+        else setTimeout(() => { if (!li._x) li.classList.remove("revealed"); }, 230); // hide the buttons once the row has slid back
         btn.style.transition = animate ? "transform 0.2s ease" : "none";
         btn.style.transform = x ? `translateX(${x}px)` : "";
       }
